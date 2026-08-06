@@ -1,0 +1,15 @@
+{
+  "name": "Siege",
+  "short_name": "Siege",
+  "description": "Low-poly 3D siege defense betting game — catapults, cannons and turrets.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#0d1219",
+  "theme_color": "#0d1219",
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

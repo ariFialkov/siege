@@ -1,0 +1,16 @@
+{
+  "name": "siege",
+  "version": "1.0.0",
+  "description": "Low-poly 3D siege defense betting game — a PWA for mobile and desktop.",
+  "private": true,
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "icons": "node scripts/gen-icons.js"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.2"
+  }
+}
