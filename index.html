@@ -9,8 +9,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Siege</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="assets/icons/icon-192.png" />
-  <link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -180,10 +179,29 @@
 
   <div id="toast"></div>
 
-  <script type="importmap">
-    { "imports": { "three": "./lib/three.module.min.js" } }
+  <script>
+    // Build the import map before any module loads: prefer the vendored copy
+    // in lib/ (created by `npm install`), fall back to the CDN otherwise.
+    (function () {
+      const CDN = 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js';
+      const local = './lib/three.module.min.js'; // "./" required by import-map spec
+      const req = new XMLHttpRequest(); // sync so the map exists before modules parse
+      let src = CDN;
+      try {
+        req.open('HEAD', local, false);
+        req.send();
+        if (req.status >= 200 && req.status < 300) src = local;
+      } catch (_) { /* fall through to CDN */ }
+      const im = document.createElement('script');
+      im.type = 'importmap';
+      im.textContent = JSON.stringify({ imports: { three: src } });
+      document.head.appendChild(im);
+      const main = document.createElement('script');
+      main.type = 'module';
+      main.src = 'js/main.js';
+      document.head.appendChild(main);
+    })();
   </script>
-  <script type="module" src="js/main.js"></script>
   <script>
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));

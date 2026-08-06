@@ -1,11 +1,11 @@
 // Siege service worker — cache-first app shell for offline PWA play.
-const CACHE = 'siege-v1';
+const CACHE = 'siege-v2';
+// Precache the app shell. The three.js module (vendored lib/ copy or CDN,
+// whichever index.html picked) is cached at runtime on first fetch.
 const ASSETS = [
   '.',
   'index.html',
   'manifest.webmanifest',
-  'lib/three.module.min.js',
-  'lib/three.core.min.js',
   'js/main.js',
   'js/config.js',
   'js/maps.js',
@@ -16,8 +16,7 @@ const ASSETS = [
   'js/slingshot.js',
   'js/audio.js',
   'js/ui.js',
-  'assets/icons/icon-192.png',
-  'assets/icons/icon-512.png',
+  'assets/icon.svg',
 ];
 
 self.addEventListener('install', (e) => {
@@ -38,7 +37,9 @@ self.addEventListener('fetch', (e) => {
     caches.match(e.request, { ignoreSearch: true }).then((hit) => {
       if (hit) return hit;
       return fetch(e.request).then((res) => {
-        if (res.ok && new URL(e.request.url).origin === location.origin) {
+        // cache same-origin assets and the three.js CDN modules for offline play
+        const url = new URL(e.request.url);
+        if (res.ok && (url.origin === location.origin || url.hostname === 'cdn.jsdelivr.net')) {
           const clone = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, clone));
         }
