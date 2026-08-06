@@ -64,7 +64,7 @@ export class UI {
     $('#map-name').textContent = info.label;
     $('#map-blurb').textContent = info.blurb;
     $('#hint').textContent = info.weapon === 'machinegun'
-      ? 'pull back to aim · hold at full pull to fire'
+      ? 'pull to max to arm · keep holding to fire & sweep'
       : 'pull back anywhere · release to fire';
   }
 

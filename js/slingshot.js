@@ -17,6 +17,7 @@ export class Slingshot {
     this.enabled = false;
     this.autoMode = false;      // machine-gun style: hold at max to fire
     this.pull = { dx: 0, dy: 0, frac: 0, angle: 0 };
+    this.armed = false;     // auto mode: set at first max pull, held until release
     this._maxNotified = false;
     this._pointerId = null;
     this._jitter = 0;
@@ -38,13 +39,14 @@ export class Slingshot {
     this.maxPull = Math.min(AIMING.maxPullPx, window.innerHeight * 0.34);
   }
 
-  get maxed() { return this.pull.frac >= AIMING.autoFireThreshold; }
+  get maxed() { return this.pull.frac >= AIMING.armThreshold; }
 
   _down(e) {
     if (!this.enabled || this.active) return;
     this.active = true;
     this._pointerId = e.pointerId;
     this._maxNotified = false;
+    this.armed = false;
     this.origin = { x: e.clientX, y: e.clientY };
     this._update(e);
     this.canvas.setPointerCapture(e.pointerId);
@@ -65,6 +67,7 @@ export class Slingshot {
       if (!this._maxNotified) {
         this._maxNotified = true;
         this._jitter = 1;
+        this.armed = true; // auto weapons stay armed until release
         this.cb.onMaxPull && this.cb.onMaxPull();
       }
     } else if (len < this.maxPull * 0.92) {
@@ -80,6 +83,7 @@ export class Slingshot {
     if (!this.active || e.pointerId !== this._pointerId) return;
     this.active = false;
     this._pointerId = null;
+    this.armed = false;
     const p = { ...this.pull };
     this.pull.frac = 0;
     this.pull.dx = this.pull.dy = 0;
@@ -99,6 +103,7 @@ export class Slingshot {
   cancel() {
     this.active = false;
     this._pointerId = null;
+    this.armed = false;
     this.pull.frac = 0;
     this.pull.dx = this.pull.dy = 0;
     this._clear();
@@ -122,7 +127,7 @@ export class Slingshot {
     const hx = ox + this.pull.dx + jx;
     const hy = oy + this.pull.dy + jy;
     const frac = this.pull.frac;
-    const maxed = this.maxed;
+    const maxed = this.autoMode ? this.armed : this.maxed; // armed MG stays hot
 
     // fork anchors perpendicular to pull direction
     const a = this.pull.angle + Math.PI / 2;

@@ -18,12 +18,12 @@ export function box(w, h, d, color, x = 0, y = 0, z = 0) {
   m.position.set(x, y, z);
   return m;
 }
-export function cyl(rt, rb, h, color, x = 0, y = 0, z = 0, seg = 7) {
+export function cyl(rt, rb, h, color, x = 0, y = 0, z = 0, seg = 10) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), M(color));
   m.position.set(x, y, z);
   return m;
 }
-export function cone(r, h, color, x = 0, y = 0, z = 0, seg = 6) {
+export function cone(r, h, color, x = 0, y = 0, z = 0, seg = 8) {
   const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), M(color));
   m.position.set(x, y, z);
   return m;
@@ -138,14 +138,57 @@ function buildFortress() {
   keep.castShadow = true;
   wall.add(keep);
   for (let b = -2; b <= 2; b++) wall.add(box(2.2, 1.8, 12.4, stoneDark, b * 2.9, 17, 5));
+  // arrow-slit windows + banners on the keep face
+  for (const [wx, wy] of [[-4, 10], [4, 10], [-4, 5.5], [4, 5.5]]) {
+    wall.add(box(0.5, 1.6, 0.3, 0x241c14, wx, wy, -1.15));
+  }
+  for (const bx of [-6.2, 6.2]) {
+    const b = box(1.6, 4.5, 0.14, 0xa03c3c, bx, 9, -1.2);
+    b.userData.flag = true;
+    wall.add(b);
+    wall.add(box(0.9, 0.9, 0.2, 0xd8b13a, bx, 10.4, -1.28));
+  }
+  const arch = cyl(3.2, 3.2, 1.1, stoneDark, 0, 8, -1.2, 12);
+  arch.rotation.x = Math.PI / 2;
+  wall.add(arch);
   wall.add(box(6, 8, 1, 0x4a3826, 0, 4, -1.2)); // gate door
+  wall.add(box(0.5, 8, 1.06, 0x2e2216, -1.5, 4, -1.22)); // door planks
+  wall.add(box(0.5, 8, 1.06, 0x2e2216, 1.5, 4, -1.22));
   root.add(wall);
+
+  // dirt road running down the battle lane
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(9, 420, 1, 24), M(0x8a6f4d));
+  road.rotation.x = -Math.PI / 2;
+  road.position.set(0, 0.12, -212);
+  root.add(road);
+  // hay bales + crates near the walls
+  for (const [hx, hz] of [[-18, -18], [22, -24], [-30, -32]]) {
+    const bale = cyl(1.3, 1.3, 1.8, 0xd0aa4e, hx, 1.3, hz, 12);
+    bale.rotation.z = Math.PI / 2;
+    root.add(bale);
+  }
+  root.add(box(2, 2, 2, 0x8a6b3f, 30, 1 + groundHeight(30, -20), -20));
+  root.add(box(1.5, 1.5, 1.5, 0x9a7a4a, 32.2, 0.75 + groundHeight(32, -21), -21));
 
   scatter(root, 46, () => {
     const g = new THREE.Group();
-    const h = 4 + Math.random() * 4;
-    g.add(cyl(0.5, 0.7, h, 0x6b4a2f, 0, h / 2, 0, 5));
-    g.add(cone(2.2 + Math.random() * 1.6, 4.5 + Math.random() * 3, 0x3f7d3a, 0, h + 2, 0, 6));
+    if (Math.random() < 0.75) {
+      // two-tier pine
+      const h = 4 + Math.random() * 4;
+      const r = 2.2 + Math.random() * 1.6;
+      g.add(cyl(0.5, 0.7, h, 0x6b4a2f, 0, h / 2, 0, 7));
+      g.add(cone(r, 4.2 + Math.random() * 2, 0x3f7d3a, 0, h + 1.6, 0));
+      g.add(cone(r * 0.7, 3.2 + Math.random() * 2, 0x4c8a45, 0, h + 4.4, 0));
+    } else {
+      // round bush cluster
+      const r = 1 + Math.random() * 1.4;
+      const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), M(0x4c8a45));
+      bush.position.y = r * 0.7;
+      g.add(bush);
+      const b2 = new THREE.Mesh(new THREE.DodecahedronGeometry(r * 0.7, 0), M(0x3f7d3a));
+      b2.position.set(r * 0.8, r * 0.5, 0.3);
+      g.add(b2);
+    }
     return g;
   }, [-330, 330], [-560, 40], 58, groundHeight);
 
@@ -169,7 +212,7 @@ function buildFortress() {
     weaponPos: new THREE.Vector3(0, 17.2, 5),
     cameraPos: new THREE.Vector3(0, 23.5, 16),
     lookTarget: new THREE.Vector3(0, 4, -120),
-    menuOrbit: { center: new THREE.Vector3(0, 10, -14), radius: 72, height: 30 },
+    menuOrbit: { center: new THREE.Vector3(0, 10, -14), radius: 88, height: 36 },
     update(t, dt) {
       cloudTick(dt);
       for (const f of flags) f.rotation.y = Math.sin(t * 3 + f.position.x) * 0.25;
@@ -217,6 +260,35 @@ function buildPlayerShip() {
   const flag = box(4, 2.4, 0.15, 0x1a1a1e, 2.2, 48.5, 16);
   flag.userData.flag = true;
   g.add(flag);
+  // deck details: plank stripes, barrels, crates, ship's wheel, lantern
+  for (let i = -3; i <= 3; i++) {
+    g.add(box(1.7, 0.06, 41, i % 2 ? 0x654226 : 0x5d3c22, i * 1.85, 6.24, 6));
+  }
+  for (const [bx, bz] of [[-5.5, 14], [-5.5, 12.2], [-4.6, 13.1]]) {
+    const barrel = cyl(0.65, 0.55, 1.5, 0x5a3d24, bx, 7, bz, 10);
+    g.add(barrel);
+    g.add(cyl(0.67, 0.67, 0.1, 0x3a3e44, bx, 7.3, bz, 10));
+  }
+  g.add(box(1.6, 1.6, 1.6, 0x6a4a2c, 5.5, 7.1, 13));
+  g.add(box(1.2, 1.2, 1.2, 0x7a5a36, 5.2, 8.5, 12.6));
+  const wheel = new THREE.Group();
+  wheel.add(cyl(1.0, 1.0, 0.14, 0x4a3220, 0, 0, 0, 12).rotateX(Math.PI / 2));
+  for (let s = 0; s < 4; s++) {
+    const spoke = box(0.12, 2.6, 0.1, 0x6a4a2c);
+    spoke.rotation.z = (s / 4) * Math.PI;
+    wheel.add(spoke);
+  }
+  wheel.position.set(0, 14.2, 19.5);
+  g.add(wheel);
+  g.add(cyl(0.12, 0.16, 1.6, 0x4a3220, 0, 13, 19.8, 8));
+  const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffd76a }));
+  lantern.position.set(0, 13.6, 25.8);
+  g.add(lantern);
+  // bow rails
+  for (const s of [-1, 1]) {
+    g.add(box(0.2, 1.0, 12, 0x3d2a18, s * 8.1, 7, -12));
+  }
   return g;
 }
 
@@ -235,12 +307,42 @@ function buildGalleon() {
   // islands off to the sides
   for (const [ix, iz, s] of [[-150, -260, 1.4], [180, -340, 1.9], [-230, -430, 2.4], [140, -120, 0.9]]) {
     const isl = new THREE.Group();
-    isl.add(cone(22 * s, 16 * s, 0xc9b47c, 0, 4, 0, 7));
-    isl.add(cone(10 * s, 14 * s, 0x4c8a45, 3 * s, 12 * s, -2, 6));
-    isl.add(cyl(0.5, 0.7, 9, 0x7a5b36, -6 * s, 9, 4, 5));
-    isl.add(cone(4, 3.4, 0x3f7d3a, -6 * s, 14.5, 4, 6));
+    isl.add(cone(22 * s, 16 * s, 0xc9b47c, 0, 4, 0, 9));
+    isl.add(cone(16 * s, 8 * s, 0xe0cf9a, 0, 3, 0, 9));       // beach skirt
+    isl.add(cone(10 * s, 14 * s, 0x4c8a45, 3 * s, 12 * s, -2, 8));
+    // palm cluster
+    for (const [px, pz] of [[-6 * s, 4], [-4 * s, 6]]) {
+      const trunk = cyl(0.4, 0.6, 9, 0x7a5b36, px, 9, pz, 7);
+      trunk.rotation.z = 0.15;
+      isl.add(trunk);
+      for (let f = 0; f < 4; f++) {
+        const frond = box(3.2, 0.14, 0.8, 0x3f7d3a, px + Math.cos(f * 1.57) * 1.5, 13.6, pz + Math.sin(f * 1.57) * 1.5);
+        frond.rotation.y = f * 1.57;
+        frond.rotation.z = 0.35;
+        isl.add(frond);
+      }
+    }
+    // foam ring at the waterline
+    const foam = new THREE.Mesh(new THREE.RingGeometry(20 * s, 23 * s, 22),
+      M(0xdff2f8, { transparent: true, opacity: 0.55 }));
+    foam.rotation.x = -Math.PI / 2;
+    foam.position.y = 1.1;
+    isl.add(foam);
     isl.position.set(ix, 0, iz);
     root.add(isl);
+  }
+  // seagulls circling the ship
+  const gulls = [];
+  for (let i = 0; i < 4; i++) {
+    const gull = new THREE.Group();
+    const lw = box(1.1, 0.08, 0.3, 0xf4f6f8, -0.5, 0, 0);
+    lw.rotation.z = 0.35;
+    const rw = box(1.1, 0.08, 0.3, 0xf4f6f8, 0.5, 0, 0);
+    rw.rotation.z = -0.35;
+    gull.add(lw, rw, box(0.35, 0.12, 0.6, 0xe8e8e8, 0, 0, 0));
+    gull.userData = { r: 26 + i * 9, h: 26 + i * 4, ph: i * 1.7, sp: 0.25 + i * 0.05, lw, rw };
+    root.add(gull);
+    gulls.push(gull);
   }
   const cloudTick = makeClouds(root, 10, 62);
 
@@ -273,6 +375,15 @@ function buildGalleon() {
       ship.rotation.x = Math.cos(t * 0.55) * 0.015;
       for (const f of flags) f.rotation.y = Math.sin(t * 3.2) * 0.3;
       for (const s of sails) s.scale.z = 1 + Math.sin(t * 1.4) * 0.5;
+      for (const gull of gulls) {
+        const u = gull.userData;
+        const a = t * u.sp + u.ph;
+        gull.position.set(Math.cos(a) * u.r, u.h + Math.sin(t * 1.3 + u.ph) * 2, -20 + Math.sin(a) * u.r);
+        gull.rotation.y = -a - Math.PI / 2;
+        const flap = Math.sin(t * 7 + u.ph) * 0.5;
+        u.lw.rotation.z = 0.2 + flap;
+        u.rw.rotation.z = -0.2 - flap;
+      }
     },
   };
 }
@@ -309,11 +420,61 @@ function buildBurm() {
       bunker.add(b);
     }
   }
-  // radio mast + crates
-  bunker.add(cyl(0.14, 0.2, 14, 0x4c4a44, 11, 20, 12, 5));
+  // radio mast + crates + oil barrels
+  bunker.add(cyl(0.14, 0.2, 14, 0x4c4a44, 11, 20, 12, 6));
+  bunker.add(box(1.0, 0.14, 0.14, 0x4c4a44, 11, 25, 12));
   bunker.add(box(2.2, 2.2, 2.2, 0x6d6a4f, -12, 16.2, 10));
   bunker.add(box(1.8, 1.8, 1.8, 0x7d7a5c, -12.5, 18.2, 9.4));
+  for (const [ox, oz, c] of [[13, 8, 0x8a4a3a], [13.9, 9.2, 0x6d6a4f], [13.4, 10.4, 0x8a4a3a]]) {
+    bunker.add(cyl(0.6, 0.6, 1.6, c, ox, 15.4, oz, 10));
+    bunker.add(cyl(0.62, 0.62, 0.08, 0x3a3833, ox, 16.2, oz, 10));
+  }
   root.add(bunker);
+
+  // watchtower off to the side of the hill
+  const tower = new THREE.Group();
+  for (const [lx, lz] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) {
+    const leg = cyl(0.14, 0.18, 11, 0x5c5648, lx, 5.5, lz, 7);
+    leg.rotation.x = lz * 0.05;
+    leg.rotation.z = -lx * 0.05;
+    tower.add(leg);
+  }
+  tower.add(box(4.4, 0.4, 4.4, 0x6d6a4f, 0, 11, 0));
+  tower.add(box(4.6, 1.2, 4.6, 0xa89468, 0, 11.9, 0));  // sandbag parapet
+  tower.add(box(4.8, 0.3, 4.8, 0x6a6d52, 0, 14.4, 0));  // roof
+  for (const [px, pz] of [[-2, -2], [2, 2]]) tower.add(cyl(0.1, 0.1, 2.4, 0x5c5648, px, 13.2, pz, 6));
+  tower.position.set(24, groundHeight(24, 2), 2);
+  root.add(tower);
+
+  // barbed wire lines flanking the approach
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 5; i++) {
+      const px = side * (16 + i * 4), pz = -34 - i * 9;
+      const post = cyl(0.09, 0.12, 2.2, 0x4c4a44, px, groundHeight(px, pz) + 1.1, pz, 6);
+      post.rotation.z = (Math.random() - 0.5) * 0.2;
+      root.add(post);
+      if (i > 0) {
+        const qx = side * (16 + (i - 1) * 4), qz = -34 - (i - 1) * 9;
+        const mx = (px + qx) / 2, mz = (pz + qz) / 2;
+        const len = Math.hypot(px - qx, pz - qz);
+        for (const wy of [0.7, 1.5]) {
+          const wire = cyl(0.025, 0.025, len, 0x3a3833, mx, groundHeight(mx, mz) + wy, mz, 4);
+          wire.rotation.z = Math.PI / 2;
+          wire.rotation.y = -Math.atan2(pz - qz, px - qx);
+          root.add(wire);
+        }
+      }
+    }
+  }
+  // canvas tent behind the lines
+  const tent = new THREE.Group();
+  const canvas = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 2.6, 3.4, 4), M(0x8a8266));
+  canvas.rotation.y = Math.PI / 4;
+  canvas.position.y = 1.7;
+  tent.add(canvas);
+  tent.add(box(0.6, 1.4, 0.1, 0x3a3327, 0, 0.7, 1.9));
+  tent.position.set(-22, groundHeight(-22, 14), 14);
+  root.add(tent);
 
   // rocks and dead shrubs
   scatter(root, 40, () => {

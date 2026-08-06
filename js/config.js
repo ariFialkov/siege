@@ -104,13 +104,20 @@ export const SPAWNING = {
 
 // ============================================================================
 // Weapons — one per map.
+// All weapons use target-point aiming: vertical pull picks a distance on the
+// field, horizontal pull picks the lateral position, and the launch solution
+// is solved to land there.
+//  style 'arc'    — fixed launch elevation, speed solved per shot (catapult)
+//  style 'direct' — fixed high speed, aimed straight at the target with a
+//                   small gravity-drop compensation (cannon, machine gun)
 // ============================================================================
 export const WEAPONS = {
   catapult: {
+    style: 'arc',
     projectile: 'boulder',
-    minSpeed: 36, maxSpeed: 95,   // full pull reaches the spawn horizon (~z -400)
     pitch: 0.78,            // launch elevation (rad)
     gravity: 22,
+    maxSolveSpeed: 115,     // clamp for the per-shot speed solution
     projectileRadius: 1.1,
     splash: 11,             // area damage radius on impact
     auto: false,
@@ -118,28 +125,25 @@ export const WEAPONS = {
     cooldown: 0.55,
   },
   cannon: {
+    style: 'direct',
     projectile: 'cannonball',
-    minSpeed: 45, maxSpeed: 108,
-    pitch: 0.5,
-    gravity: 24,
-    projectileRadius: 0.7,
+    speed: 190,             // near-flat, line-of-sight shot
+    gravity: 10,
+    projectileRadius: 0.8,
     splash: 9,
     auto: false,
     shakeOnFire: 0.65,
     cooldown: 0.5,
   },
   machinegun: {
+    style: 'direct',
     projectile: 'bullet',
     speed: 300,
-    pitchMin: -0.24,        // aim range mapped from pull direction (diagonal = close)
-    pitchMax: -0.01,        // straight-down pull ≈ the far edge of the field;
-                            // the turret sits high, so depression angles are
-                            // what actually hit targets
-    gravity: 14,
+    gravity: 12,
     projectileRadius: 1.0,  // generous — direct-fire weapon
     splash: 0,
-    auto: true,             // fires while pull is held at max
-    fireRate: 8,            // rounds per second
+    auto: true,             // pull to max ARMS it; fires while held after that
+    fireRate: 9,            // rounds per second
     spread: 0.012,
     shakeOnFire: 0.12,
     cooldown: 0,
@@ -148,9 +152,12 @@ export const WEAPONS = {
 
 export const AIMING = {
   maxPullPx: 190,         // max slingshot pull distance (CSS px, scaled on small screens)
-  maxYaw: 0.6,            // rad, at full lateral pull
+  rangeMin: 40,           // shortest aimable distance (small pull)
+  rangeMax: 430,          // full-pull distance (~the spawn horizon)
+  rangeCurve: 1.5,        // >1 gives finer control at close range
+  lateralMax: 92,         // full sideways pull aims this far off-center
   fireThreshold: 0.08,    // minimum pull fraction that counts as a shot
-  autoFireThreshold: 0.96,// MG fires while pull ≥ this fraction of max
+  armThreshold: 0.96,     // MG arms when pull first reaches this fraction
 };
 
 export const EFFECTS = {

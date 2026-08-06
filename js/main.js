@@ -81,10 +81,14 @@ class Game {
     const sun = new THREE.DirectionalLight(sc, si);
     sun.position.set(...spos);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.mapSize.set(2048, 2048);
     const S = 90;
     Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 10, far: 400 });
     this.scene.add(sun);
+    // soft cool fill from the opposite side rounds out the flat shading
+    const fill = new THREE.DirectionalLight(0xbcd4e8, 0.35);
+    fill.position.set(-spos[0], spos[1] * 0.6, -spos[2]);
+    this.scene.add(fill);
 
     this.weaponDef = WEAPONS[MAP_INFO[name].weapon];
     this.weaponKind = MAP_INFO[name].weapon;
@@ -143,21 +147,46 @@ class Game {
   }
 
   // ------------------------------------------------------------------- aim
+  // Target-point aiming: vertical pull picks a distance down the field,
+  // horizontal pull picks the lateral offset; the launch is solved to land
+  // exactly there.
   computeAim(pull) {
-    const yaw = (pull.dx / this.slingshot.maxPull) * AIMING.maxYaw;
-    if (this.weaponDef.auto) {
-      // pitch comes from pull *direction* (not length): the MG fires at full
-      // pull, so length is pinned — straight-down pull aims far, diagonal near
-      const len = Math.max(1, Math.hypot(pull.dx, pull.dy));
-      const dyFrac = Math.max(0, pull.dy) / len;
-      const pitch = this.weaponDef.pitchMin + (this.weaponDef.pitchMax - this.weaponDef.pitchMin) * dyFrac;
-      const dir = _v1.set(0, Math.sin(pitch), -Math.cos(pitch)).applyAxisAngle(UP, yaw);
-      return { yaw, pitch, speed: this.weaponDef.speed, dir: dir.clone() };
+    const W = this.weaponDef;
+    const max = this.slingshot.maxPull;
+    const dyFrac = Math.min(1, Math.max(0, pull.dy) / max);
+    const R = AIMING.rangeMin + Math.pow(dyFrac, AIMING.rangeCurve) * (AIMING.rangeMax - AIMING.rangeMin);
+    const X = -(pull.dx / max) * AIMING.lateralMax; // pull left → aim right
+    const muzzle = this.weapon.muzzleWorld(this.weapon.muzzleLocal);
+    const target = _v1.set(X, this.map.groundHeight(X, -R, this.time) + 1.2, -R);
+    const tx = target.x - muzzle.x, tz = target.z - muzzle.z;
+    const D = Math.hypot(tx, tz);
+    const yaw = Math.atan2(-tx, -tz);
+
+    if (W.style === 'direct') {
+      // aim straight at the target, nudged up to compensate gravity drop
+      const t = D / W.speed;
+      const aimY = target.y + 0.5 * W.gravity * t * t - muzzle.y;
+      const dir = _v2.set(tx, aimY, tz).normalize().clone();
+      return { yaw, pitch: Math.asin(dir.y), speed: W.speed, dir };
     }
-    const speed = this.weaponDef.minSpeed + (this.weaponDef.maxSpeed - this.weaponDef.minSpeed) * pull.frac;
-    const pitch = this.weaponDef.pitch;
-    const dir = _v1.set(0, Math.sin(pitch), -Math.cos(pitch)).applyAxisAngle(UP, yaw);
-    return { yaw, pitch, speed, dir: dir.clone() };
+
+    // arc: fixed elevation, solve launch speed so the shot lands at distance D.
+    // Landing distance for speed v from height h: monotonic in v → bisect.
+    const h = Math.max(0.1, muzzle.y - target.y);
+    const cosP = Math.cos(W.pitch), sinP = Math.sin(W.pitch);
+    const dist = (v) => {
+      const vy = v * sinP;
+      const t = (vy + Math.sqrt(vy * vy + 2 * W.gravity * h)) / W.gravity;
+      return v * cosP * t;
+    };
+    let lo = 5, hi = W.maxSolveSpeed;
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2;
+      if (dist(mid) < D) lo = mid; else hi = mid;
+    }
+    const speed = (lo + hi) / 2;
+    const dir = _v2.set(tx / D * cosP, sinP, tz / D * cosP).clone();
+    return { yaw, pitch: W.pitch, speed, dir };
   }
 
   updateTrajectoryPreview(aim, show) {
@@ -324,7 +353,7 @@ class Game {
       }
       this.updateTrajectoryPreview(aim, pulling);
 
-      if (this.weaponDef.auto && this.slingshot.active && this.slingshot.maxed) {
+      if (this.weaponDef.auto && this.slingshot.active && this.slingshot.armed) {
         this.mgAccum += dt;
         const period = 1 / this.weaponDef.fireRate;
         while (this.mgAccum >= period) {
