@@ -6,6 +6,7 @@
   "scripts": {
     "start": "python3 -m http.server 8080",
     "icons": "node scripts/gen-icons.js",
+    "build": "node scripts/build.js",
     "postinstall": "node scripts/vendor-three.js"
   },
   "dependencies": {

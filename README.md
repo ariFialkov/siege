@@ -32,6 +32,15 @@ bet that resolves instantly — the scene never stops.
 - Max pull triggers a haptic buzz (on supporting devices); firing adds a subtle
   screen shake.
 
+## Play online
+
+The game deploys automatically to GitHub Pages on every push:
+
+**https://arifialkov.github.io/siege/**
+
+Open it on your phone or desktop; use "Add to Home Screen" / install to get
+the fullscreen PWA experience.
+
 ## Running
 
 Any static file server works — no build step:
@@ -47,6 +56,19 @@ Three.js loads from `lib/` when present, otherwise from the jsDelivr CDN.
 Run `npm install` once to vendor it into `lib/` for a fully self-contained,
 offline-first deployment (the service worker caches the CDN copy after first
 load either way).
+
+## Building an uploadable folder
+
+To produce a clean, self-contained build (for uploading to any static host
+or platform that takes a root folder with `index.html`):
+
+```bash
+npm install        # once — also vendors three.js into lib/
+npm run build      # assembles everything into dist/
+```
+
+`dist/` is the complete game — `index.html` at the root, no external
+dependencies — ready to zip, upload, or serve as-is.
 
 ## Tuning the odds
 
