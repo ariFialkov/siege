@@ -4,11 +4,21 @@ import * as THREE from 'three';
 // ---------------------------------------------------------------------------
 // shared low-poly helpers
 // ---------------------------------------------------------------------------
+// Stepped toon lighting: rounded shapes get soft cartoon banding instead of
+// the faceted flat-shaded look.
+const gradientMap = (() => {
+  const tex = new THREE.DataTexture(new Uint8Array([90, 150, 210, 255]), 4, 1, THREE.RedFormat);
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return tex;
+})();
+
 const matCache = new Map();
 export function M(color, opts = {}) {
   const key = color + JSON.stringify(opts);
   if (!matCache.has(key)) {
-    matCache.set(key, new THREE.MeshLambertMaterial({ color, flatShading: true, ...opts }));
+    matCache.set(key, new THREE.MeshToonMaterial({ color, gradientMap, ...opts }));
   }
   return matCache.get(key);
 }
@@ -23,9 +33,27 @@ export function cyl(rt, rb, h, color, x = 0, y = 0, z = 0, seg = 10) {
   m.position.set(x, y, z);
   return m;
 }
-export function cone(r, h, color, x = 0, y = 0, z = 0, seg = 8) {
+export function cone(r, h, color, x = 0, y = 0, z = 0, seg = 10) {
   const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), M(color));
   m.position.set(x, y, z);
+  return m;
+}
+export function capsule(r, len, color, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 12), M(color));
+  m.position.set(x, y, z);
+  return m;
+}
+export function sph(r, color, x = 0, y = 0, z = 0, w = 12, h = 9) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, w, h), M(color));
+  m.position.set(x, y, z);
+  return m;
+}
+// billowing sail: an open partial cylinder, belly facing +z
+export function sailCurved(w, hgt, color, x = 0, y = 0, z = 0) {
+  const geo = new THREE.CylinderGeometry(w * 0.62, w * 0.62, hgt, 12, 1, true, -0.85, 1.7);
+  const m = new THREE.Mesh(geo, M(color, { side: THREE.DoubleSide }));
+  m.position.set(x, y, z);
+  m.userData.sail = true;
   return m;
 }
 
@@ -154,6 +182,19 @@ function buildFortress() {
   wall.add(box(6, 8, 1, 0x4a3826, 0, 4, -1.2)); // gate door
   wall.add(box(0.5, 8, 1.06, 0x2e2216, -1.5, 4, -1.22)); // door planks
   wall.add(box(0.5, 8, 1.06, 0x2e2216, 1.5, 4, -1.22));
+  // torches flanking the gate (flames tracked for flicker)
+  const torchFlames = [];
+  for (const tx of [-4.2, 4.2]) {
+    wall.add(cyl(0.12, 0.16, 2.2, 0x4a3826, tx, 6.2, -1.6, 7));
+    wall.add(cyl(0.3, 0.22, 0.4, 0x2e2216, tx, 7.4, -1.6, 9));
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.28, 0.9, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffb347 })
+    );
+    flame.position.set(tx, 8.0, -1.6);
+    wall.add(flame);
+    torchFlames.push(flame);
+  }
   root.add(wall);
 
   // dirt road running down the battle lane
@@ -216,6 +257,10 @@ function buildFortress() {
     update(t, dt) {
       cloudTick(dt);
       for (const f of flags) f.rotation.y = Math.sin(t * 3 + f.position.x) * 0.25;
+      for (const fl of torchFlames) {
+        fl.scale.setScalar(0.85 + Math.sin(t * 11 + fl.position.x) * 0.18);
+        fl.rotation.y = t * 2.5;
+      }
     },
   };
 }
@@ -250,11 +295,10 @@ function buildPlayerShip() {
   g.add(box(12, 1, 8, 0x8a623c, 0, 12.2, 22));
   // masts + sails — kept midship/aft so the bow gun position has a clear view
   for (const [mz, mh, sw] of [[3, 34, 14], [16, 40, 17]]) {
-    g.add(cyl(0.5, 0.7, mh, woodDark, 0, mh / 2 + 6, mz, 6));
-    const s = box(sw, mh * 0.42, 0.3, sail, 0, mh * 0.62 + 6, mz);
-    s.userData.sail = true;
-    g.add(s);
-    g.add(cyl(0.22, 0.22, sw + 2, woodDark, 0, mh * 0.84 + 6, mz, 5).rotateZ(Math.PI / 2));
+    g.add(cyl(0.5, 0.7, mh, woodDark, 0, mh / 2 + 6, mz, 10));
+    g.add(sailCurved(sw, mh * 0.42, sail, 0, mh * 0.62 + 6, mz));
+    g.add(sailCurved(sw * 0.7, mh * 0.24, sail, 0, mh * 0.9 + 6, mz));
+    g.add(cyl(0.22, 0.22, sw + 2, woodDark, 0, mh * 0.84 + 6, mz, 6).rotateZ(Math.PI / 2));
   }
   // black flag
   const flag = box(4, 2.4, 0.15, 0x1a1a1e, 2.2, 48.5, 16);
@@ -297,9 +341,13 @@ function buildGalleon() {
   const groundHeight = (x, z, t = 0) => wave(x, z, t);
 
   const sea = makeTerrain((x, z) => wave(x, z, 0), 0x2a6d8f);
-  sea.material = M(0x2a6d8f, { transparent: true, opacity: 0.96 });
+  // glossy cartoon water with sun glints
+  sea.material = new THREE.MeshPhongMaterial({
+    color: 0x2f7396, specular: 0xbfe4f2, shininess: 90, transparent: true, opacity: 0.95,
+  });
   root.add(sea);
   const seaPos = sea.geometry.attributes.position;
+  let seaNormalTick = 0;
 
   const ship = buildPlayerShip();
   root.add(ship);
@@ -370,11 +418,13 @@ function buildGalleon() {
         seaPos.setY(i, wave(seaPos.getX(i), seaPos.getZ(i), t));
       }
       seaPos.needsUpdate = true;
+      // refresh lighting normals a few times a second so the glints move
+      if (++seaNormalTick % 4 === 0) sea.geometry.computeVertexNormals();
       ship.position.y = wave(0, 0, t) * 0.5;
       ship.rotation.z = Math.sin(t * 0.7) * 0.02;
       ship.rotation.x = Math.cos(t * 0.55) * 0.015;
       for (const f of flags) f.rotation.y = Math.sin(t * 3.2) * 0.3;
-      for (const s of sails) s.scale.z = 1 + Math.sin(t * 1.4) * 0.5;
+      for (const s of sails) s.scale.z = 1 + Math.sin(t * 1.4) * 0.18;
       for (const gull of gulls) {
         const u = gull.userData;
         const a = t * u.sp + u.ph;

@@ -1,6 +1,6 @@
 // Enemy meshes (procedural med-poly) and the spawner/manager.
 import * as THREE from 'three';
-import { box, cyl, cone, M } from './maps.js';
+import { box, cyl, cone, capsule, sph, sailCurved, M } from './maps.js';
 import { SPAWNING } from './config.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -21,48 +21,66 @@ const pickWeighted = (defs) => {
 
 function soldierBody(armor, trim, helm, { plume = null, skin = 0xd9b38c } = {}) {
   const g = new THREE.Group();
-  g.add(box(0.95, 1.35, 0.62, armor, 0, 1.55, 0));         // torso
-  g.add(box(1.0, 0.35, 0.66, trim, 0, 1.0, 0));            // belt
-  g.add(box(0.55, 0.55, 0.55, skin, 0, 2.5, 0));           // head
-  const helmet = cyl(0.36, 0.4, 0.35, helm, 0, 2.9, 0, 8); // helmet dome
+  const torso = capsule(0.46, 0.68, armor, 0, 1.62, 0);    // rounded torso
+  torso.scale.z = 0.72;
+  g.add(torso);
+  g.add(cyl(0.44, 0.48, 0.28, trim, 0, 1.05, 0, 12));      // belt
+  g.add(sph(0.35, skin, 0, 2.52, 0));                      // head
+  const helmet = sph(0.38, helm, 0, 2.62, 0);              // helmet dome
+  helmet.scale.y = 0.8;
   g.add(helmet);
-  g.add(box(0.72, 0.12, 0.72, helm, 0, 2.76, 0));          // helmet brim
-  if (plume) g.add(cone(0.14, 0.55, plume, 0, 3.3, 0, 6)); // crest
-  g.add(box(0.3, 0.95, 0.32, trim, -0.3, 0.5, 0));         // legs
-  g.add(box(0.3, 0.95, 0.32, trim, 0.3, 0.5, 0));
-  g.add(box(0.34, 0.14, 0.44, 0x3a3028, -0.3, 0.05, 0.05));// boots
-  g.add(box(0.34, 0.14, 0.44, 0x3a3028, 0.3, 0.05, 0.05));
-  g.add(box(0.26, 1.0, 0.3, armor, -0.68, 1.6, 0));        // arms
-  g.add(box(0.26, 1.0, 0.3, armor, 0.68, 1.6, 0));
-  g.add(box(0.24, 0.22, 0.26, skin, -0.68, 1.05, 0));      // hands
-  g.add(box(0.24, 0.22, 0.26, skin, 0.68, 1.05, 0));
+  g.add(cyl(0.44, 0.46, 0.1, helm, 0, 2.55, 0, 12));       // helmet brim
+  if (plume) {
+    const crest = cone(0.15, 0.6, plume, 0, 3.15, 0, 8);
+    crest.scale.z = 0.55;
+    g.add(crest);
+  }
+  for (const s of [-1, 1]) {
+    g.add(capsule(0.15, 0.55, trim, s * 0.26, 0.55, 0));   // legs
+    g.add(sph(0.17, 0x3a3028, s * 0.26, 0.12, 0.06));      // boots
+    const arm = capsule(0.13, 0.6, armor, s * 0.64, 1.62, 0);
+    arm.rotation.z = -s * 0.12;
+    g.add(arm);
+    g.add(sph(0.13, skin, s * 0.7, 1.12, 0));              // hands
+  }
   return g;
 }
 
 function horseBody(coat, { mane = 0x2c2117, tack = null } = {}) {
   const g = new THREE.Group();
-  g.add(box(2.4, 1.05, 0.95, coat, 0, 1.6, 0));            // body
-  g.add(box(1.1, 0.85, 0.8, coat, -0.85, 1.75, 0));        // chest
-  g.add(box(0.75, 0.95, 0.55, coat, -1.5, 2.25, 0));       // neck (angled)
-  g.children[2].rotation.z = 0.5;
-  g.add(box(0.85, 0.42, 0.48, coat, -2.05, 2.72, 0));      // head
-  g.add(box(0.3, 0.3, 0.36, 0x1f1812, -2.45, 2.62, 0));    // muzzle
-  g.add(box(0.14, 0.3, 0.12, coat, -1.95, 3.02, -0.16));   // ears
-  g.add(box(0.14, 0.3, 0.12, coat, -1.95, 3.02, 0.16));
-  g.add(box(0.7, 0.75, 0.16, mane, -1.45, 2.7, 0));        // mane
-  g.children[7].rotation.z = 0.5;
+  const body = capsule(0.55, 1.5, coat, 0, 1.65, 0);       // barrel body
+  body.rotation.z = Math.PI / 2;
+  g.add(body);
+  g.add(sph(0.58, coat, -0.95, 1.75, 0));                  // chest
+  const neck = capsule(0.3, 0.85, coat, -1.5, 2.25, 0);    // arched neck
+  neck.rotation.z = 0.55;
+  g.add(neck);
+  const head = capsule(0.24, 0.5, coat, -2.05, 2.72, 0);   // head
+  head.rotation.z = Math.PI / 2 - 0.35;
+  g.add(head);
+  g.add(sph(0.2, 0x1f1812, -2.5, 2.58, 0));                // muzzle
+  for (const s of [-1, 1]) {
+    const ear = cone(0.09, 0.28, coat, -1.92, 3.06, s * 0.16, 6);
+    ear.rotation.x = -s * 0.25;
+    g.add(ear);
+  }
+  const maneMesh = box(0.65, 0.8, 0.14, mane, -1.42, 2.68, 0);
+  maneMesh.rotation.z = 0.5;
+  g.add(maneMesh);
   for (const lx of [-0.85, 0.85]) {
-    for (const lz of [-0.32, 0.32]) {
-      g.add(box(0.26, 0.75, 0.26, coat, lx, 0.75, lz));
-      g.add(box(0.22, 0.55, 0.22, coat, lx, 0.28, lz));    // lower leg
-      g.add(box(0.24, 0.14, 0.26, 0x1f1812, lx, 0.05, lz));// hoof
+    for (const lz of [-0.3, 0.3]) {
+      g.add(capsule(0.13, 0.85, coat, lx, 0.75, lz));      // legs
+      g.add(cyl(0.14, 0.16, 0.16, 0x1f1812, lx, 0.1, lz, 8)); // hooves
     }
   }
-  g.add(box(0.7, 0.55, 0.16, mane, 1.35, 1.75, 0));        // tail
-  g.children[g.children.length - 1].rotation.z = -0.5;
+  const tail = capsule(0.12, 0.6, mane, 1.32, 1.6, 0);
+  tail.rotation.z = -0.55;
+  g.add(tail);
   if (tack) {
-    g.add(box(1.0, 0.16, 1.02, tack, 0.1, 2.16, 0));       // saddle blanket
-    g.add(box(0.6, 0.24, 0.7, 0x4a3826, 0.1, 2.32, 0));    // saddle
+    g.add(box(1.0, 0.14, 1.06, tack, 0.1, 2.2, 0));        // saddle blanket
+    const saddle = sph(0.36, 0x4a3826, 0.1, 2.32, 0);
+    saddle.scale.set(1, 0.6, 1.1);
+    g.add(saddle);
   }
   return g;
 }
@@ -81,11 +99,7 @@ function shipHull(w, h, len, color, dark) {
   return g;
 }
 
-function sail(w, hgt, color, x, y, z) {
-  const s = box(w, hgt, 0.14, color, x, y, z);
-  s.userData.sail = true;
-  return s;
-}
+const sail = sailCurved; // enemy ships share the billowing sail
 
 function gunports(g, w, len, count, y) {
   for (let i = 0; i < count; i++) {
@@ -395,13 +409,19 @@ const FACTORIES = {
     // the full soldierBody) to keep draw calls in check on mobile.
     const lite = () => {
       const s = new THREE.Group();
-      s.add(box(0.95, 1.35, 0.62, 0xb0b6bd, 0, 1.55, 0));
-      s.add(box(0.55, 0.55, 0.55, 0xd9b38c, 0, 2.5, 0));
-      s.add(cyl(0.36, 0.4, 0.4, 0x9aa0a8, 0, 2.9, 0, 8));
-      s.add(cone(0.13, 0.5, 0xa03c3c, 0, 3.25, 0, 6));
-      s.add(box(0.3, 0.95, 0.32, 0x8a2f2a, -0.3, 0.5, 0));
-      s.add(box(0.3, 0.95, 0.32, 0x8a2f2a, 0.3, 0.5, 0));
-      s.add(box(0.26, 1.0, 0.3, 0xb0b6bd, 0.68, 1.6, 0));
+      const torso = capsule(0.45, 0.66, 0xb0b6bd, 0, 1.6, 0);
+      torso.scale.z = 0.72;
+      s.add(torso);
+      s.add(sph(0.34, 0xd9b38c, 0, 2.5, 0));
+      const helm = sph(0.37, 0x9aa0a8, 0, 2.6, 0);
+      helm.scale.y = 0.8;
+      s.add(helm);
+      const crest = cone(0.14, 0.55, 0xa03c3c, 0, 3.15, 0, 8);
+      crest.scale.z = 0.55;
+      s.add(crest);
+      s.add(capsule(0.15, 0.5, 0x8a2f2a, -0.27, 0.55, 0));
+      s.add(capsule(0.15, 0.5, 0x8a2f2a, 0.27, 0.55, 0));
+      s.add(capsule(0.12, 0.55, 0xb0b6bd, 0.64, 1.6, 0));
       return s;
     };
     const g = new THREE.Group();
@@ -460,32 +480,38 @@ const FACTORIES = {
   elephant() {
     const g = new THREE.Group();
     const hide = 0x8a8078, hideDark = 0x736a60;
-    g.add(box(3.0, 2.4, 4.4, hide, 0, 2.6, 0.3));                  // body
-    g.add(box(2.6, 1.0, 3.6, hideDark, 0, 1.5, 0.3));              // belly
-    const head = box(1.9, 1.7, 1.6, hide, 0, 3.2, -2.4);
+    const body = capsule(1.5, 2.0, hide, 0, 2.7, 0.4);             // rounded body
+    body.rotation.x = Math.PI / 2;
+    body.scale.x = 0.95;
+    g.add(body);
+    const head = sph(1.05, hide, 0, 3.3, -2.5);
+    head.scale.z = 0.9;
     g.add(head);
-    // ears
+    g.add(sph(0.5, hide, 0, 4.0, -2.2));                           // brow dome
+    // big floppy ears
     for (const s of [-1, 1]) {
-      const ear = box(1.5, 1.6, 0.18, hideDark, s * 1.35, 3.4, -2.1);
-      ear.rotation.y = s * 0.5;
+      const ear = sph(0.95, hideDark, s * 1.15, 3.4, -2.2);
+      ear.scale.set(0.18, 1, 0.75);
+      ear.rotation.y = s * 0.55;
       g.add(ear);
     }
-    // trunk — curved from stacked segments (animated sway)
+    // trunk — curved from tapering segments (animated sway)
     const trunk = new THREE.Group();
-    let ty = -0.3, tz = -0.85;
+    let ty = -0.3, tz = -0.5;
     for (let i = 0; i < 4; i++) {
-      const seg = box(0.55 - i * 0.08, 0.9, 0.5 - i * 0.06, hide, 0, ty, tz);
-      seg.rotation.x = 0.25 + i * 0.12;
+      const seg = capsule(0.26 - i * 0.04, 0.55, hide, 0, ty, tz);
+      seg.rotation.x = 0.35 + i * 0.14;
       trunk.add(seg);
-      ty -= 0.75;
-      tz -= 0.18 - i * 0.09;
+      ty -= 0.62;
+      tz -= 0.2 - i * 0.08;
     }
-    trunk.position.set(0, 3.2, -2.9);
+    trunk.position.set(0, 3.1, -3.2);
     g.add(trunk);
     // tusks
     for (const s of [-1, 1]) {
-      const tusk = cyl(0.07, 0.14, 1.4, 0xf0e8d8, s * 0.55, 2.4, -3.1, 7);
-      tusk.rotation.x = 0.8;
+      const tusk = capsule(0.09, 1.1, 0xf0e8d8, s * 0.55, 2.5, -3.15);
+      tusk.rotation.x = 0.85;
+      tusk.rotation.z = -s * 0.15;
       g.add(tusk);
     }
     // legs
