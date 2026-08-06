@@ -387,6 +387,206 @@ const FACTORIES = {
     g.add(box(0.9, 0.5, 0.9, 0x7d7a5c, 1.0, 2.1, -1.9));
     return { group: g, bob: 0.03, rock: 0.02 };
   },
+
+  // --- temple -------------------------------------------------------------
+  legion() {
+    // a marching formation counts as one target.
+    // Legions are common, so each soldier is a lite build (~1/3 the meshes of
+    // the full soldierBody) to keep draw calls in check on mobile.
+    const lite = () => {
+      const s = new THREE.Group();
+      s.add(box(0.95, 1.35, 0.62, 0xb0b6bd, 0, 1.55, 0));
+      s.add(box(0.55, 0.55, 0.55, 0xd9b38c, 0, 2.5, 0));
+      s.add(cyl(0.36, 0.4, 0.4, 0x9aa0a8, 0, 2.9, 0, 8));
+      s.add(cone(0.13, 0.5, 0xa03c3c, 0, 3.25, 0, 6));
+      s.add(box(0.3, 0.95, 0.32, 0x8a2f2a, -0.3, 0.5, 0));
+      s.add(box(0.3, 0.95, 0.32, 0x8a2f2a, 0.3, 0.5, 0));
+      s.add(box(0.26, 1.0, 0.3, 0xb0b6bd, 0.68, 1.6, 0));
+      return s;
+    };
+    const g = new THREE.Group();
+    for (const [sx, sz] of [[-0.95, -0.8], [0.95, -0.8], [0, 0.9]]) {
+      const s = lite();
+      s.position.set(sx, 0, sz);
+      g.add(s);
+      // scutum — big tower shield held at the front
+      g.add(box(1.0, 1.5, 0.14, 0x9c2f28, sx, 1.5, sz - 0.55));
+      g.add(box(0.16, 1.5, 0.16, 0xd8b13a, sx, 1.5, sz - 0.6));     // spine
+      // pilum
+      g.add(cyl(0.04, 0.05, 2.6, 0x8a6b3f, sx + 0.55, 2.2, sz, 5));
+      g.add(cone(0.07, 0.4, 0xb9bec4, sx + 0.55, 3.6, sz, 5));
+    }
+    return { group: g, bob: 0.12, rock: 0.03 };
+  },
+  romanchariot() {
+    const g = new THREE.Group();
+    const cab = new THREE.Group();
+    cab.add(box(1.6, 1.0, 1.5, 0xd9cfb8, 0, 1.35, 0));             // white-gold cab
+    cab.add(box(1.65, 0.2, 1.55, 0xd8b13a, 0, 1.92, 0));
+    cab.add(box(0.18, 0.65, 1.55, 0xd8b13a, 0.8, 1.5, 0));
+    cab.add(box(1.65, 0.45, 0.14, 0x9c2f28, 0, 1.2, 0.8));
+    cab.add(box(1.65, 0.45, 0.14, 0x9c2f28, 0, 1.2, -0.8));
+    cab.position.x = 1.2;
+    g.add(cab);
+    const spin = [];
+    for (const wz of [-0.95, 0.95]) {
+      const wheel = new THREE.Group();
+      wheel.add(cyl(0.75, 0.75, 0.14, 0x6b4a2e, 0, 0, 0, 12).rotateX(Math.PI / 2));
+      for (let s = 0; s < 4; s++) {
+        const spoke = box(0.09, 1.4, 0.07, 0xd8b13a);
+        spoke.rotation.z = (s / 4) * Math.PI;
+        wheel.add(spoke);
+      }
+      // scythe blade on the hub
+      const blade = box(0.7, 0.1, 0.16, 0xb9bec4, 0, 0, wz > 0 ? 0.25 : -0.25);
+      wheel.add(blade);
+      wheel.position.set(1.35, 0.75, wz);
+      spin.push(wheel);
+      g.add(wheel);
+    }
+    g.add(box(2.3, 0.12, 0.12, 0x8a6b3f, -0.35, 1.0, 0));
+    for (const hz of [-0.5, 0.5]) {
+      const horse = horseBody(0xe8e2d4, { mane: 0xc9bfa8 });
+      horse.scale.setScalar(0.92);
+      horse.position.set(-2.3, 0, hz);
+      g.add(horse);
+    }
+    const driver = soldierBody(0x9c2f28, 0x6e211c, 0xb9bec4, { plume: 0xd8b13a });
+    driver.scale.setScalar(0.85);
+    driver.position.set(1.25, 1.05, 0);
+    g.add(driver);
+    return { group: g, spin, bob: 0.12, rock: 0.04 };
+  },
+  elephant() {
+    const g = new THREE.Group();
+    const hide = 0x8a8078, hideDark = 0x736a60;
+    g.add(box(3.0, 2.4, 4.4, hide, 0, 2.6, 0.3));                  // body
+    g.add(box(2.6, 1.0, 3.6, hideDark, 0, 1.5, 0.3));              // belly
+    const head = box(1.9, 1.7, 1.6, hide, 0, 3.2, -2.4);
+    g.add(head);
+    // ears
+    for (const s of [-1, 1]) {
+      const ear = box(1.5, 1.6, 0.18, hideDark, s * 1.35, 3.4, -2.1);
+      ear.rotation.y = s * 0.5;
+      g.add(ear);
+    }
+    // trunk — curved from stacked segments (animated sway)
+    const trunk = new THREE.Group();
+    let ty = -0.3, tz = -0.85;
+    for (let i = 0; i < 4; i++) {
+      const seg = box(0.55 - i * 0.08, 0.9, 0.5 - i * 0.06, hide, 0, ty, tz);
+      seg.rotation.x = 0.25 + i * 0.12;
+      trunk.add(seg);
+      ty -= 0.75;
+      tz -= 0.18 - i * 0.09;
+    }
+    trunk.position.set(0, 3.2, -2.9);
+    g.add(trunk);
+    // tusks
+    for (const s of [-1, 1]) {
+      const tusk = cyl(0.07, 0.14, 1.4, 0xf0e8d8, s * 0.55, 2.4, -3.1, 7);
+      tusk.rotation.x = 0.8;
+      g.add(tusk);
+    }
+    // legs
+    for (const [lx, lz] of [[-1.05, -1.2], [1.05, -1.2], [-1.05, 1.7], [1.05, 1.7]]) {
+      g.add(cyl(0.42, 0.5, 1.5, hide, lx, 0.75, lz, 9));
+      g.add(cyl(0.52, 0.52, 0.25, 0xd9cfb8, lx, 0.12, lz, 9));     // toenail band
+    }
+    g.add(box(0.16, 1.0, 0.16, hideDark, 0, 2.2, 2.6));            // tail
+    // howdah war-tower on its back
+    const howdah = new THREE.Group();
+    howdah.add(box(2.2, 0.3, 2.6, 0x9c2f28, 0, 0, 0));             // red cloth base
+    howdah.add(box(1.8, 1.0, 2.0, 0x8a6b3f, 0, 0.6, 0));
+    howdah.add(box(2.0, 0.25, 2.2, 0xd8b13a, 0, 1.2, 0));
+    const archer = soldierBody(0x9c2f28, 0x6e211c, 0xb9bec4, { plume: 0xd8b13a });
+    archer.scale.setScalar(0.7);
+    archer.position.y = 1.3;
+    howdah.add(archer);
+    howdah.position.set(0, 4.1, 0.4);
+    g.add(howdah);
+    return { group: g, bob: 0.1, rock: 0.045, anim: (t) => { trunk.rotation.x = Math.sin(t * 1.3) * 0.14; } };
+  },
+  siegetower() {
+    const g = new THREE.Group();
+    const wood = 0x6e5136, woodDark = 0x54402a, hide = 0x7d4a3a;
+    // three tiers, slightly tapered
+    g.add(box(3.4, 3.0, 3.4, wood, 0, 2.3, 0));
+    g.add(box(3.0, 3.0, 3.0, wood, 0, 5.3, 0));
+    g.add(box(2.7, 2.6, 2.7, wood, 0, 8.1, 0));
+    // hide armor patches
+    for (const [hy, hs] of [[2.3, 3.5], [5.3, 3.1], [8.0, 2.8]]) {
+      g.add(box(hs, 1.7, 0.12, hide, 0, hy, -hs / 2 - 0.02));
+    }
+    // corner posts
+    for (const [px, pz] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) {
+      g.add(box(0.35, 9.6, 0.35, woodDark, px, 4.8, pz));
+    }
+    // crenellated top + defender
+    for (let i = -1; i <= 1; i++) {
+      g.add(box(0.7, 0.6, 0.25, woodDark, i * 1.0, 9.7, -1.3));
+      g.add(box(0.7, 0.6, 0.25, woodDark, i * 1.0, 9.7, 1.3));
+    }
+    const lookout = soldierBody(0xb0b6bd, 0x8a2f2a, 0x9aa0a8, { plume: 0xa03c3c });
+    lookout.scale.setScalar(0.7);
+    lookout.position.y = 9.4;
+    g.add(lookout);
+    // drawbridge ramp (raised) on the front
+    const bridge = box(2.2, 2.6, 0.2, woodDark, 0, 8.2, -1.55);
+    bridge.rotation.x = 0.12;
+    g.add(bridge);
+    // wheels
+    for (const [wx, wz] of [[-1.5, -1.3], [1.5, -1.3], [-1.5, 1.3], [1.5, 1.3]]) {
+      const w = cyl(0.65, 0.65, 0.5, 0x3d2e1c, wx, 0.65, wz, 12);
+      w.rotation.z = Math.PI / 2;
+      g.add(w);
+    }
+    return { group: g, bob: 0.02, rock: 0.015 };
+  },
+  batteringram() {
+    const g = new THREE.Group();
+    const wood = 0x6e5136, woodDark = 0x54402a;
+    // gabled shed roof
+    for (const s of [-1, 1]) {
+      const panel = box(1.9, 0.16, 5.4, 0x7d4a3a, s * 0.8, 3.1, 0);
+      panel.rotation.z = -s * 0.6;
+      g.add(panel);
+    }
+    g.add(box(0.3, 0.3, 5.6, woodDark, 0, 3.6, 0));                // ridge beam
+    // posts
+    for (const [px, pz] of [[-1.3, -2.2], [1.3, -2.2], [-1.3, 2.2], [1.3, 2.2]]) {
+      g.add(box(0.3, 2.6, 0.3, wood, px, 1.6, pz));
+    }
+    // swinging ram log with iron head
+    const ram = new THREE.Group();
+    const log = cyl(0.32, 0.36, 5.2, 0x8a6b3f, 0, 0, 0, 10);
+    log.rotation.x = Math.PI / 2;
+    ram.add(log);
+    const ramHead = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.8, 8), M(0x4a4a50));
+    ramHead.rotation.x = Math.PI / 2;
+    ramHead.position.z = -2.8;
+    ram.add(ramHead);
+    ram.position.set(0, 2.4, 0);
+    g.add(ram);
+    // wheels
+    const spin = [];
+    for (const [wx, wz] of [[-1.4, -1.9], [1.4, -1.9], [-1.4, 1.9], [1.4, 1.9]]) {
+      const w = cyl(0.55, 0.55, 0.4, 0x3d2e1c, wx, 0.55, wz, 12);
+      w.rotation.z = Math.PI / 2;
+      w.userData.spinAxis = 'x';
+      spin.push(w);
+      g.add(w);
+    }
+    // crew pushing at the back
+    const crew = soldierBody(0xb0b6bd, 0x8a2f2a, 0x9aa0a8, { plume: 0xa03c3c });
+    crew.scale.setScalar(0.85);
+    crew.position.set(0, 0, 3.1);
+    g.add(crew);
+    return {
+      group: g, spin, bob: 0.03, rock: 0.02,
+      anim: (t) => { ram.position.z = Math.sin(t * 2.2) * 0.55; },
+    };
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -459,6 +659,7 @@ export class EnemyManager {
       if (m.spin) {
         for (const w of m.spin) w.rotation[w.userData.spinAxis || 'z'] -= e.speed * dt * 0.9;
       }
+      if (m.anim) m.anim(t + e.phase);
 
       if (g.position.z > SPAWNING.despawnZ) this.remove(e, i);
     }
@@ -489,4 +690,9 @@ const FACING_FLIP = {
   jeep: Math.PI,
   tank: Math.PI,
   artillery: Math.PI,
+  legion: Math.PI,        // scuta face local -z
+  romanchariot: Math.PI / 2,
+  elephant: Math.PI,      // trunk at local -z
+  siegetower: Math.PI,    // drawbridge at local -z
+  batteringram: Math.PI,  // ram head at local -z
 };

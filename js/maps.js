@@ -524,9 +524,162 @@ function buildBurm() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// TEMPLE — Roman pantheon on a rise above the plain
+// ---------------------------------------------------------------------------
+function buildTemple() {
+  const root = new THREE.Group();
+  const marble = 0xe3ded2, marbleShade = 0xc9c2b2, terracotta = 0x9c5a3c;
+  const groundHeight = (x, z) => {
+    const damp = smoothstep(50, 135, Math.abs(x)) + smoothstep(-370, -520, z);
+    const mound = 7 * Math.exp(-(x * x * 0.8 + (z - 16) * (z - 16)) / 2600);
+    return n2(x * 1.1, z * 0.9) * Math.min(1, damp) * 2.2 + mound;
+  };
+  root.add(makeTerrain(groundHeight, 0x9aa85c));
+
+  // ---- the pantheon -------------------------------------------------------
+  const temple = new THREE.Group();
+  // podium + forward weapon terrace + front steps
+  temple.add(box(30, 3, 30, marbleShade, 0, 8.5, 22));
+  temple.add(box(18, 3, 14, marbleShade, 0, 8.5, -2));
+  temple.add(box(18.5, 0.7, 14.5, marble, 0, 10.2, -2));
+  for (let s = 0; s < 4; s++) {
+    temple.add(box(15 - s * 1.2, 0.8, 3, marble, 0, 7.6 - s * 0.9, -10.5 - s * 1.5));
+  }
+  temple.add(box(26, 0.8, 26, marble, 0, 10.4, 22)); // temple floor
+  // colonnade — front row + returns
+  const colY = 10.8;
+  const columns = [[-10.5, 12], [-6.3, 12], [-2.1, 12], [2.1, 12], [6.3, 12], [10.5, 12],
+    [-10.5, 18], [10.5, 18], [-10.5, 24], [10.5, 24]];
+  for (const [cx, cz] of columns) {
+    temple.add(box(1.5, 0.5, 1.5, marble, cx, colY + 0.25, cz));            // base
+    temple.add(cyl(0.62, 0.72, 7.6, marble, cx, colY + 4.3, cz, 12));       // shaft
+    temple.add(box(1.6, 0.55, 1.6, marbleShade, cx, colY + 8.3, cz));       // capital
+  }
+  // architrave + frieze
+  temple.add(box(24.5, 1.3, 4.4, marble, 0, 19.4, 12));
+  temple.add(box(24.9, 0.6, 4.8, marbleShade, 0, 20.3, 12));
+  // pediment (triangular prism, squashed)
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(11.5, 11.5, 4.2, 3, 1), M(marble));
+  ped.rotation.x = Math.PI / 2;
+  ped.rotation.z = Math.PI / 2;
+  ped.scale.y = 0.38;
+  ped.position.set(0, 21.2, 12);
+  temple.add(ped);
+  // rotunda + dome behind the portico
+  temple.add(cyl(10.5, 11, 11, marbleShade, 0, 16, 26, 20));
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(10.5, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), M(terracotta));
+  dome.position.set(0, 21.5, 26);
+  temple.add(dome);
+  temple.add(cyl(1.2, 1.6, 1.4, marble, 0, 32.2, 26, 12)); // oculus ring cap
+  // bronze doors in the shadow of the portico
+  temple.add(box(5, 7.5, 0.5, 0x6e5a2e, 0, 14.6, 19.8));
+  temple.add(box(0.4, 7.5, 0.6, 0x54431f, 0, 14.6, 19.78));
+  temple.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  root.add(temple);
+
+  // weapon terrace flanked by statues on plinths
+  for (const sx of [-8, 8]) {
+    const statue = new THREE.Group();
+    statue.add(box(2.2, 2.4, 2.2, marbleShade, 0, 1.2, 0));
+    const figure = new THREE.Group();
+    figure.add(box(0.95, 1.35, 0.62, marble, 0, 1.55, 0));
+    figure.add(box(0.55, 0.55, 0.55, marble, 0, 2.5, 0));
+    figure.add(box(0.3, 0.95, 0.32, marble, -0.3, 0.5, 0));
+    figure.add(box(0.3, 0.95, 0.32, marble, 0.3, 0.5, 0));
+    figure.add(box(0.26, 1.0, 0.3, marble, -0.68, 1.6, 0));
+    figure.add(cyl(0.05, 0.05, 2.4, marble, 0.68, 1.9, 0, 6)); // spear
+    figure.scale.setScalar(1.15);
+    figure.position.y = 2.4;
+    statue.add(figure);
+    statue.position.set(sx * 1.5, 10.4, -8);
+    statue.scale.setScalar(0.8);
+    root.add(statue);
+  }
+
+  // via — stone road down the battle lane
+  const via = new THREE.Mesh(new THREE.PlaneGeometry(8.5, 420, 1, 24), M(0xb5ac96));
+  via.rotation.x = -Math.PI / 2;
+  via.position.set(0, 0.14, -212);
+  root.add(via);
+  for (let i = 0; i < 12; i++) {
+    root.add(box(8.9, 0.1, 0.5, 0x8f8672, 0, 0.16, -40 - i * 34));
+  }
+
+  // cypress + olive trees, ruins
+  scatter(root, 44, () => {
+    const g = new THREE.Group();
+    const r = Math.random();
+    if (r < 0.45) {
+      // cypress
+      const h = 7 + Math.random() * 5;
+      g.add(cyl(0.3, 0.4, 1.2, 0x6b4a2f, 0, 0.6, 0, 6));
+      g.add(cone(1.1 + Math.random() * 0.5, h, 0x2e5236, 0, h / 2 + 1, 0, 8));
+    } else if (r < 0.8) {
+      // olive tree
+      const h = 2 + Math.random() * 1.5;
+      const trunk = cyl(0.35, 0.55, h, 0x7a6a4f, 0, h / 2, 0, 7);
+      trunk.rotation.z = (Math.random() - 0.5) * 0.3;
+      g.add(trunk);
+      const canopy = new THREE.Mesh(new THREE.DodecahedronGeometry(1.6 + Math.random(), 0), M(0x8fa06a));
+      canopy.position.y = h + 1.1;
+      canopy.scale.y = 0.75;
+      g.add(canopy);
+    } else {
+      // ruined column
+      const drums = 1 + Math.floor(Math.random() * 3);
+      for (let d = 0; d < drums; d++) {
+        g.add(cyl(0.6, 0.66, 1.1, 0xd6cfbf, 0, 0.55 + d * 1.1, 0, 10));
+      }
+      const fallen = cyl(0.55, 0.6, 2.6, 0xc9c2b2, 1.8, 0.55, 0.6, 10);
+      fallen.rotation.z = Math.PI / 2;
+      fallen.rotation.y = Math.random();
+      g.add(fallen);
+    }
+    return g;
+  }, [-330, 330], [-540, 30], 52, groundHeight);
+
+  // distant aqueduct marching along the east side
+  const aq = new THREE.Group();
+  for (let i = 0; i < 9; i++) {
+    const z = -90 - i * 36;
+    aq.add(box(4, 16, 4, 0xcabfa4, 0, 8, z));
+    aq.add(box(4.5, 3, 38, 0xd6ccb2, 0, 17.5, z - 18));
+  }
+  aq.position.set(150, 0, 0);
+  aq.rotation.y = 0.06;
+  root.add(aq);
+  // faded twin on the west
+  const aq2 = aq.clone();
+  aq2.position.set(-210, 0, -60);
+  root.add(aq2);
+
+  // distant hills
+  for (let i = 0; i < 8; i++) {
+    const x = -300 + i * 85 + Math.random() * 40;
+    root.add(cone(50 + Math.random() * 25, 30 + Math.random() * 22, 0x8a9a6a, x, 8, -585, 7));
+  }
+  const cloudTick = makeClouds(root, 7, 72);
+
+  return {
+    name: 'temple',
+    root,
+    groundHeight,
+    isWater: false,
+    sky: 0xa8cbe0, fog: [0xd8d0b8, 210, 630],
+    hemi: [0xfff2d8, 0x6a7a48, 0.95], sun: [0xffe8c0, 1.3, [70, 85, 30]],
+    weaponPos: new THREE.Vector3(0, 11.3, -4),
+    cameraPos: new THREE.Vector3(0, 17.5, 8),
+    lookTarget: new THREE.Vector3(0, 2, -120),
+    menuOrbit: { center: new THREE.Vector3(0, 14, 14), radius: 92, height: 36 },
+    update(t, dt) { cloudTick(dt); },
+  };
+}
+
 export function buildMap(name) {
   if (name === 'galleon') return buildGalleon();
   if (name === 'burm') return buildBurm();
+  if (name === 'temple') return buildTemple();
   return buildFortress();
 }
 

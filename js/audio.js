@@ -65,6 +65,11 @@ export const sfx = {
     if (kind === 'bullet') {
       playNoise(0.16, 0.09, 2600, 0.6);
       playTone('square', 220, 60, 0.08, 0.07);
+    } else if (kind === 'bolt') {
+      // ballista twang: sharp string snap + wooden thunk
+      playTone('square', 340, 70, 0.16, 0.11);
+      playNoise(0.22, 0.16, 1500, 0.8);
+      playTone('sine', 110, 55, 0.18, 0.18);
     } else if (kind === 'cannonball') {
       playNoise(0.5, 0.5, 500);
       playTone('sine', 120, 34, 0.4, 0.4);

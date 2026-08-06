@@ -214,8 +214,86 @@ export class MachineGun extends WeaponBase {
   }
 }
 
+// --------------------------------------------------------------------------
+export class Ballista extends WeaponBase {
+  constructor(mountPos) {
+    super(mountPos);
+    const wood = 0x7a5a36, woodDark = 0x5a4126, iron = 0x4a4a50, rope = 0xb09a6a;
+    const base = new THREE.Group();
+    base.add(cyl(0.9, 1.3, 1.0, woodDark, 0, 0.5, 0, 10));   // pedestal
+    base.add(box(3.0, 0.4, 3.0, wood, 0, 0.1, 0));
+    base.add(box(0.5, 0.5, 2.6, woodDark, -1.1, 0.25, 0));   // skids
+    base.add(box(0.5, 0.5, 2.6, woodDark, 1.1, 0.25, 0));
+    this.yawGroup.add(base);
+
+    this.pitchGroup.position.set(0, 1.35, 0);
+    const p = this.pitchGroup;
+    p.add(box(0.5, 0.35, 4.6, wood, 0, 0, -0.4));            // stock rail
+    p.add(box(0.14, 0.1, 4.4, iron, 0, 0.22, -0.4));         // bolt groove
+    // torsion frame at the front
+    p.add(box(2.6, 1.1, 0.45, woodDark, 0, 0.1, -2.2));
+    for (const sx of [-1.0, 1.0]) {
+      p.add(cyl(0.18, 0.18, 1.2, rope, sx, 0.1, -2.2, 8));   // torsion bundles
+      p.add(box(0.3, 0.3, 0.55, iron, sx, 0.75, -2.2));      // caps
+    }
+    // bow arms + string (animated on fire)
+    this.arms = [];
+    for (const s of [-1, 1]) {
+      const arm = new THREE.Group();
+      arm.add(box(1.7, 0.18, 0.14, wood, s * 0.85, 0, 0));
+      arm.add(cyl(0.07, 0.07, 0.4, iron, s * 1.65, 0, 0, 6));
+      arm.position.set(s * 0.9, 0.28, -2.2);
+      p.add(arm);
+      this.arms.push(arm);
+    }
+    this.string = new THREE.Group();
+    for (const s of [-1, 1]) {
+      const seg = cyl(0.035, 0.035, 2.0, 0xd8cdb2, 0, 0, 0, 4);
+      seg.rotation.z = Math.PI / 2;
+      seg.position.x = s * 1.0;
+      this.string.add(seg);
+    }
+    this.string.position.set(0, 0.28, -2.2);
+    p.add(this.string);
+    // loaded bolt (hidden briefly after firing)
+    this.loadedBolt = new THREE.Group();
+    const shaft = cyl(0.09, 0.11, 2.6, 0x7a5a36, 0, 0, 0, 7);
+    shaft.rotation.x = Math.PI / 2;
+    this.loadedBolt.add(shaft);
+    this.loadedBolt.add(cone(0.15, 0.6, 0x4a4a50, 0, 0, -1.5, 7).rotateX(-Math.PI / 2));
+    this.loadedBolt.add(box(0.06, 0.5, 0.3, 0xa03c3c, 0, 0.05, 1.15));
+    this.loadedBolt.position.set(0, 0.34, -0.9);
+    p.add(this.loadedBolt);
+    p.add(box(0.35, 0.55, 0.4, iron, 0, -0.1, 1.6));         // trigger housing
+    p.add(cyl(0.3, 0.3, 0.5, woodDark, 0, -0.05, 1.1, 8).rotateZ(Math.PI / 2)); // windlass
+    this.muzzleLocal = new THREE.Vector3(0, 0.34, -2.4);
+    this._reload = 1;
+  }
+  setPitch(rad) { this.pitchGroup.rotation.x = -rad; }
+  fire() {
+    super.fire();
+    this._reload = 0;
+  }
+  update(dt) {
+    super.update(dt);
+    this._reload = Math.min(1, this._reload + dt * 1.8);
+    // arms snap forward on release, then ease back as it "reloads"
+    const k = this.animT < 0.12 ? 1 - this.animT / 0.12 : 0;
+    const cocked = 0.5, released = -0.25;
+    const angle = released + (cocked - released) * Math.min(1, this._reload + k * 0);
+    const snap = this.animT < 0.12 ? released : angle;
+    for (let i = 0; i < 2; i++) {
+      this.arms[i].rotation.y = (i === 0 ? -1 : 1) * snap;
+    }
+    // string follows the arm tips (approximate: slides forward on release)
+    this.string.position.z = -2.2 - (snap - cocked) * 1.2;
+    this.loadedBolt.visible = this._reload > 0.6;
+  }
+}
+
 export function makeWeapon(kind, mountPos) {
   if (kind === 'cannon') return new Cannon(mountPos);
   if (kind === 'machinegun') return new MachineGun(mountPos);
+  if (kind === 'ballista') return new Ballista(mountPos);
   return new Catapult(mountPos);
 }

@@ -313,7 +313,8 @@ class Game {
 
   // ------------------------------------------------------------------ loop
   tick() {
-    const dt = Math.min(0.05, this.clock.getDelta());
+    const rawDt = this.clock.getDelta();
+    const dt = Math.min(0.05, rawDt);
     this.time += dt;
     const t = this.time;
 
@@ -333,7 +334,8 @@ class Game {
       );
       this.camera.lookAt(o.center);
     } else if (this.state === 'transition') {
-      this.transT = Math.min(1, this.transT + dt / 1.1);
+      // wall-clock time (lightly capped) so slow frames can't stall the fly-in
+      this.transT = Math.min(1, this.transT + Math.min(0.12, rawDt) / 1.1);
       const k = this.transT * this.transT * (3 - 2 * this.transT);
       this.camera.position.lerpVectors(this.transFrom, this.map.cameraPos, k);
       _v1.lerpVectors(this.transLook, this.map.lookTarget, k);

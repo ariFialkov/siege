@@ -90,6 +90,13 @@ export const ENEMIES = {
     { id: 'tank',     label: 'Tank',      weight: 18, speed: [7, 10],  radius: 3.2, payouts: PAYOUTS.rare },
     { id: 'artillery',label: 'Artillery', weight: 6,  speed: [5, 7],   radius: 3.0, payouts: PAYOUTS.jackpot },
   ],
+  temple: [
+    { id: 'legion',      label: 'Legion',       weight: 38, speed: [5, 7],   radius: 2.6, payouts: PAYOUTS.common },
+    { id: 'romanchariot',label: 'Chariot',      weight: 22, speed: [13, 18], radius: 2.6, payouts: PAYOUTS.uncommon },
+    { id: 'batteringram',label: 'Battering Ram',weight: 18, speed: [5, 7],   radius: 2.9, payouts: PAYOUTS.uncommon },
+    { id: 'elephant',    label: 'War Elephant', weight: 15, speed: [4, 6],   radius: 3.6, payouts: PAYOUTS.rare },
+    { id: 'siegetower',  label: 'Siege Tower',  weight: 7,  speed: [3, 4.5], radius: 3.4, payouts: PAYOUTS.jackpot },
+  ],
 };
 
 export const SPAWNING = {
@@ -135,6 +142,17 @@ export const WEAPONS = {
     shakeOnFire: 0.65,
     cooldown: 0.5,
   },
+  ballista: {
+    style: 'direct',
+    projectile: 'bolt',
+    speed: 150,             // heavy dart — flat but visibly slower than a cannonball
+    gravity: 16,
+    projectileRadius: 1.0,
+    splash: 5,
+    auto: false,
+    shakeOnFire: 0.55,
+    cooldown: 0.7,
+  },
   machinegun: {
     style: 'direct',
     projectile: 'bullet',
@@ -168,10 +186,11 @@ export const EFFECTS = {
   vibrateBigWin: [40, 60, 90],
 };
 
-export const MAPS = ['fortress', 'galleon', 'burm'];
+export const MAPS = ['fortress', 'galleon', 'burm', 'temple'];
 
 export const MAP_INFO = {
   fortress: { label: 'Fortress', blurb: 'Medieval castle · Catapult', weapon: 'catapult' },
   galleon:  { label: 'Galleon',  blurb: 'Pirate ship · Cannon',       weapon: 'cannon' },
   burm:     { label: 'Burm',     blurb: 'Hillside bunker · MG turret', weapon: 'machinegun' },
+  temple:   { label: 'Temple',   blurb: 'Roman pantheon · Ballista',  weapon: 'ballista' },
 };
