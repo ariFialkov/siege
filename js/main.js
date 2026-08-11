@@ -1,6 +1,6 @@
 // SIEGE — main game orchestration.
 import * as THREE from 'three';
-import { BETTING, ENEMIES, WEAPONS, AIMING, EFFECTS, ROUND, MAP_INFO, drawPayout } from './config.js';
+import { BETTING, ENEMIES, WEAPONS, AIMING, EFFECTS, ROUND, MAP_INFO, drawBanded, cents, money } from './config.js';
 import { buildMap, disposeMap } from './maps.js';
 import { EnemyManager } from './enemies.js';
 import { makeWeapon } from './weapons.js';
@@ -289,7 +289,7 @@ class Game {
     const bet = this.ui.betAmount;
     if (this.balance < bet) { this.ui.toast('Not enough balance for that bet'); return; }
     unlockAudio();
-    this.balance -= bet;
+    this.balance = cents(this.balance - bet);
     this.persistBalance();
     this.ui.setBalance(this.balance);
     this.stats.rounds++;
@@ -297,7 +297,8 @@ class Game {
 
     this.round = {
       bet,
-      target: bet * drawPayout(ROUND.targets), // steered outcome for this round
+      // steered outcome for this round, to the cent
+      target: cents(bet * drawBanded(ROUND.targets)),
       cash: bet,
       mult: 1.0,
       tLeft: ROUND.duration,
@@ -316,9 +317,9 @@ class Game {
   // it — skill changes the show, never the result.
   endRound() {
     const r = this.round;
-    const payout = Math.max(0, Math.round(r.target));
-    this.balance += payout;
-    this.stats.returned += payout;
+    const payout = cents(Math.max(0, r.target));
+    this.balance = cents(this.balance + payout);
+    this.stats.returned = cents(this.stats.returned + payout);
     this.persistBalance();
     this.ui.setBalance(this.balance);
     this.ui.roundEnd(payout, r.bet);
@@ -334,7 +335,7 @@ class Game {
 
   abortRound() {
     // leaving mid-round (menu/map switch) refunds the stake
-    this.balance += this.round.bet;
+    this.balance = cents(this.balance + this.round.bet);
     this.stats.wagered -= this.round.bet;
     this.stats.rounds--;
     this.persistBalance();
@@ -420,14 +421,14 @@ class Game {
     const r = this.round, S = ROUND.settle, u = this.urgency;
     const caps = ROUND.values[e.def.tier];
     const gap = this.desiredTotal(S.lookahead * (1 - u)) - r.cash * r.mult;
-    const token = Math.max(1, r.bet * S.token);
+    const token = Math.max(0.01, r.bet * S.token * rand(0.4, 1.6));
     const share = rand(S.hitShare[0], S.hitShare[1]) * (1 - u) + u; // → 1 at the horn
-    let dollars = gap > 0 ? gap * share : token;
+    const dollars = gap > 0 ? gap * share : token;
     if (e.role === 'cash') {
-      return Math.max(1, Math.round(Math.min(dollars, caps.cashCap * r.bet * (1 + u * 2))));
+      return Math.max(0.01, cents(Math.min(dollars, caps.cashCap * r.bet * (1 + u * 2))));
     }
-    const dm = dollars / Math.max(r.cash, 1);
-    return +Math.min(Math.max(0.02, dm), caps.multCap * (1 + u)).toFixed(2);
+    const dm = dollars / Math.max(r.cash, 0.01);
+    return Math.max(0.01, cents(Math.min(dm, caps.multCap * (1 + u))));
   }
 
   // size a wall breach's penalty the same way, in the other direction
@@ -435,14 +436,14 @@ class Game {
     const r = this.round, S = ROUND.settle, u = this.urgency;
     const caps = ROUND.values[e.def.tier];
     const gap = this.desiredTotal(S.lookahead * (1 - u)) - r.cash * r.mult;
-    const token = Math.max(1, r.bet * S.token);
+    const token = Math.max(0.01, r.bet * S.token * rand(0.4, 1.6));
     const share = rand(S.wallShare[0], S.wallShare[1]) * (1 - u) + u;
-    let dollars = gap < 0 ? -gap * share : token;
+    const dollars = gap < 0 ? -gap * share : token;
     if (e.role === 'cash') {
-      return Math.max(1, Math.round(Math.min(dollars, caps.cashCap * r.bet * (1 + u * 2))));
+      return Math.max(0.01, cents(Math.min(dollars, caps.cashCap * r.bet * (1 + u * 2))));
     }
-    const dm = dollars / Math.max(r.cash, 1);
-    return +Math.min(Math.max(0.02, dm), caps.multCap * (1 + u)).toFixed(2);
+    const dm = dollars / Math.max(r.cash, 0.01);
+    return Math.max(0.01, cents(Math.min(dm, caps.multCap * (1 + u))));
   }
 
   // ------------------------------------------------------- enemy round roles
@@ -561,12 +562,12 @@ class Game {
         const r = this.round;
         const v = this.hitValue(enemy);
         if (enemy.role === 'cash') {
-          r.cash += v;
+          r.cash = cents(r.cash + v);
           spectacle = 0.35 + Math.min(1.6, v / Math.max(1, r.bet));
-          this.effects.floatText(epos, `+$${v.toLocaleString()}`, v >= r.bet * 1.5 ? 'label-jackpot' : 'label-win');
+          this.effects.floatText(epos, `+$${money(v)}`, v >= r.bet * 1.5 ? 'label-jackpot' : 'label-win');
           sfx.coin();
         } else {
-          r.mult = +(r.mult + v).toFixed(2);
+          r.mult = cents(r.mult + v);
           spectacle = 0.35 + Math.min(1.6, v * 2);
           this.effects.floatText(epos, `+${v.toFixed(2)}×`, 'label-mult');
           sfx.chime();
@@ -589,12 +590,12 @@ class Game {
       const r = this.round;
       const v = this.wallValue(e);
       if (e.role === 'cash') {
-        r.cash = Math.max(0, Math.round(r.cash - v));
-        this.effects.floatText(pos, `−$${v.toLocaleString()}`, 'label-lose');
+        r.cash = Math.max(0, cents(r.cash - v));
+        this.effects.floatText(pos, `−$${money(v)}`, 'label-lose');
       } else {
         // never zero the multiplier unless the round is heading for a bust
-        const floor = r.target > 0 ? ROUND.settle.multFloor : 0;
-        r.mult = Math.max(floor, +(r.mult - v).toFixed(2));
+        const floor = r.target > 0.01 ? ROUND.settle.multFloor : 0;
+        r.mult = Math.max(floor, cents(r.mult - v));
         this.effects.floatText(pos, `−${v.toFixed(2)}×`, 'label-lose');
       }
       this.ui.roundTick(r);

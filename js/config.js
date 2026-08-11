@@ -13,16 +13,32 @@ export const BETTING = {
   multipliers: [1, 2, 5, 10],
 };
 
-// Draw an outcome multiplier from a weighted table [{x, w}, ...].
-export function drawPayout(table) {
+// ---------------------------------------------------------------------------
+// Money helpers — every amount in the game is carried to the cent, so prizes
+// land on genuine values like $19.62 rather than tidy multiples of the stake.
+// ---------------------------------------------------------------------------
+export const cents = (v) => Math.round(v * 100) / 100;
+export const money = (v) => cents(v).toLocaleString('en-US', {
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
+
+// Draw a continuous payout multiplier from weighted bands.
+// A band is picked by weight, then a value is sampled anywhere inside it:
+//   value = lo + (hi - lo) * u^skew,  u ∈ [0,1)
+// `skew` > 1 biases toward the low end of the band (fat-tail bands pay their
+// headline figure rarely). Band mean is lo + (hi - lo) / (skew + 1), so the
+// table's exact RTP is Σ w·mean / Σ w — see ROUND.targets.
+export function drawBanded(bands) {
   let total = 0;
-  for (const o of table) total += o.w;
+  for (const b of bands) total += b.w;
   let r = Math.random() * total;
-  for (const o of table) {
-    r -= o.w;
-    if (r <= 0) return o.x;
+  let band = bands[bands.length - 1];
+  for (const b of bands) {
+    r -= b.w;
+    if (r <= 0) { band = b; break; }
   }
-  return table[table.length - 1].x;
+  const u = Math.pow(Math.random(), band.skew || 1);
+  return band.lo + (band.hi - band.lo) * u;
 }
 
 // ============================================================================
@@ -72,18 +88,22 @@ export const ENEMIES = {
 // ============================================================================
 export const ROUND = {
   duration: 30,
-  // RTP = Σ(x·w) / Σw = 95.9 / 99.8 ≈ 0.961 — the game's exact house edge,
-  // since every round pays out precisely its drawn target.
+  // Continuous payout bands (multiples of the bet) — a round's target is
+  // sampled anywhere inside its band, so prizes are genuine amounts like
+  // $19.62 rather than tidy multiples of the stake.
+  // RTP = Σ w·mean / Σ w = 0.9600 (mean = lo + (hi−lo)/(skew+1)).
+  // To retune: change bands/weights, then re-solve the first band's weight
+  //   w0 = (S − rtp·W) / (rtp − mean0)
+  // where S and W are the Σ w·mean and Σ w of every *other* band.
   targets: [
-    { x: 0, w: 26 },
-    { x: 0.2, w: 20 },
-    { x: 0.5, w: 16 },
-    { x: 1, w: 14 },
-    { x: 1.5, w: 10 },
-    { x: 2.5, w: 7.4 },
-    { x: 4, w: 4.4 },
-    { x: 8, w: 1.6 },
-    { x: 15, w: 0.4 },
+    { lo: 0,    hi: 0.06, w: 26.07, skew: 1 },   // the wall falls — pennies at best
+    { lo: 0.06, hi: 0.32, w: 20,    skew: 1 },
+    { lo: 0.32, hi: 0.72, w: 17,    skew: 1 },
+    { lo: 0.72, hi: 1.35, w: 14,    skew: 1 },   // around break-even
+    { lo: 1.35, hi: 2.4,  w: 9,     skew: 1.2 },
+    { lo: 2.4,  hi: 4.6,  w: 5,     skew: 1.4 },
+    { lo: 4.6,  hi: 10,   w: 2.2,   skew: 1.8 },
+    { lo: 10,   hi: 38,   w: 0.8,   skew: 2.2 }, // the big one
   ],
   roleSplit: 0.6,           // fraction of enemies carrying cash (rest carry mult)
   // per-tier CAPS for displayed values (fractions of the round bet for cash,

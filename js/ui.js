@@ -1,5 +1,5 @@
 // DOM UI: menu screen, HUD, betting controls, invasion-round displays.
-import { BETTING, MAPS, MAP_INFO, ROUND } from './config.js';
+import { BETTING, MAPS, MAP_INFO, ROUND, money } from './config.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -84,7 +84,7 @@ export class UI {
   }
 
   setBalance(v) {
-    for (const el of this.balanceEls) if (el) el.textContent = Math.floor(v).toLocaleString();
+    for (const el of this.balanceEls) if (el) el.textContent = money(v);
   }
 
   showMenu() {
@@ -117,9 +117,9 @@ export class UI {
     fill.style.width = `${frac * 100}%`;
     fill.classList.toggle('urgent', round.tLeft < 6);
     $('#round-secs').textContent = `${Math.max(0, Math.ceil(round.tLeft))}s`;
-    $('#rt-cash').textContent = `$${Math.round(round.cash).toLocaleString()}`;
+    $('#rt-cash').textContent = `$${money(round.cash)}`;
     $('#rt-mult').textContent = `${round.mult.toFixed(2)}×`;
-    $('#rt-total').textContent = `$${Math.max(0, Math.round(round.cash * round.mult)).toLocaleString()}`;
+    $('#rt-total').textContent = `$${money(Math.max(0, round.cash * round.mult))}`;
   }
 
   roundEnd(payout, bet) {
@@ -133,14 +133,14 @@ export class UI {
     } else if (payout >= bet) {
       title.textContent = 'WALL DEFENDED';
       el.className = 'rr-win';
-    } else if (payout > 0) {
+    } else if (payout >= bet * 0.15) {
       title.textContent = 'COSTLY DEFENSE';
       el.className = 'rr-part';
     } else {
       title.textContent = 'THE WALL FELL';
       el.className = 'rr-lose';
     }
-    amount.textContent = `+$${payout.toLocaleString()}`;
+    amount.textContent = `+$${money(payout)}`;
     void el.offsetWidth; // retrigger animation
     el.classList.add('on');
     clearTimeout(this._rt);
