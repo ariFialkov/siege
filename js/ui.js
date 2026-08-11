@@ -1,17 +1,18 @@
-// DOM UI: menu screen, HUD, betting controls, result flashes.
-import { BETTING, MAPS, MAP_INFO } from './config.js';
+// DOM UI: menu screen, HUD, betting controls, invasion-round displays.
+import { BETTING, MAPS, MAP_INFO, ROUND } from './config.js';
 
 const $ = (sel) => document.querySelector(sel);
 
 export class UI {
   /**
-   * cb: { onPlay(), onMenu(), onMapChange(name), onStakeChange(), }
+   * cb: { onPlay(), onMenu(), onMapChange(name), onStakeChange(), onStartRound() }
    */
   constructor(cb) {
     this.cb = cb;
     this.mapIndex = Math.max(0, MAPS.indexOf(localStorage.getItem('siege.map') || 'fortress'));
     this.stakeIndex = BETTING.defaultStakeIndex;
     this.multIndex = 0;
+    this.locked = false;
 
     this.menuEl = $('#menu');
     this.hudEl = $('#hud');
@@ -23,6 +24,7 @@ export class UI {
     $('#menu-btn').addEventListener('click', () => cb.onMenu());
     $('#stake-minus').addEventListener('click', () => this.bumpStake(-1));
     $('#stake-plus').addEventListener('click', () => this.bumpStake(1));
+    $('#defend-btn').addEventListener('click', () => cb.onStartRound());
 
     const multBox = $('#multipliers');
     BETTING.multipliers.forEach((m, i) => {
@@ -30,6 +32,7 @@ export class UI {
       b.className = 'chip';
       b.textContent = `${m}×`;
       b.addEventListener('click', () => {
+        if (this.locked) return;
         this.multIndex = i;
         this.refreshBet();
         cb.onStakeChange && cb.onStakeChange();
@@ -54,6 +57,7 @@ export class UI {
   }
 
   bumpStake(dir) {
+    if (this.locked) return;
     this.stakeIndex = Math.min(BETTING.stakes.length - 1, Math.max(0, this.stakeIndex + dir));
     this.refreshBet();
     this.cb.onStakeChange && this.cb.onStakeChange();
@@ -70,7 +74,7 @@ export class UI {
 
   refreshBet() {
     $('#stake-value').textContent = this.stake;
-    $('#bet-total').textContent = `bet ${this.betAmount}`;
+    $('#defend-bet').textContent = this.betAmount.toLocaleString();
     [...document.querySelectorAll('#multipliers .chip')].forEach((el, i) => {
       el.classList.toggle('active', i === this.multIndex);
     });
@@ -90,11 +94,68 @@ export class UI {
     this.hudEl.classList.remove('hidden');
   }
 
-  // green/red edge flash on bet result
+  // ------------------------------------------------------------- round HUD
+  setLocked(locked) {
+    this.locked = locked;
+    $('#bet-panel').classList.toggle('locked', locked);
+    $('#defend-btn').classList.toggle('hidden', locked);
+  }
+
+  roundStart(round) {
+    this.setLocked(true);
+    $('#round-hud').classList.remove('hidden');
+    $('#round-result').classList.add('hidden');
+    this.roundTick(round);
+  }
+
+  roundTick(round) {
+    const frac = Math.max(0, round.tLeft / ROUND.duration);
+    const fill = $('#round-timer-fill');
+    fill.style.width = `${frac * 100}%`;
+    fill.classList.toggle('urgent', round.tLeft < 6);
+    $('#round-secs').textContent = `${Math.max(0, Math.ceil(round.tLeft))}s`;
+    $('#rt-cash').textContent = `$${Math.round(round.cash).toLocaleString()}`;
+    $('#rt-mult').textContent = `${round.mult.toFixed(2)}×`;
+    $('#rt-total').textContent = `$${Math.max(0, Math.round(round.cash * round.mult)).toLocaleString()}`;
+  }
+
+  roundEnd(payout, bet) {
+    this.setLocked(false);
+    $('#round-hud').classList.add('hidden');
+    const el = $('#round-result');
+    const title = $('#rr-title'), amount = $('#rr-amount');
+    if (payout >= bet * 2) {
+      title.textContent = 'INVASION CRUSHED!';
+      el.className = 'rr-big';
+    } else if (payout >= bet) {
+      title.textContent = 'WALL DEFENDED';
+      el.className = 'rr-win';
+    } else if (payout > 0) {
+      title.textContent = 'COSTLY DEFENSE';
+      el.className = 'rr-part';
+    } else {
+      title.textContent = 'THE WALL FELL';
+      el.className = 'rr-lose';
+    }
+    amount.textContent = `+$${payout.toLocaleString()}`;
+    void el.offsetWidth; // retrigger animation
+    el.classList.add('on');
+    clearTimeout(this._rt);
+    this._rt = setTimeout(() => el.classList.add('hidden'), 3200);
+    el.classList.remove('hidden');
+  }
+
+  roundAbort() {
+    this.setLocked(false);
+    $('#round-hud').classList.add('hidden');
+    $('#round-result').classList.add('hidden');
+    this.toast('Round cancelled — stake refunded');
+  }
+
+  // green/red edge flash
   resultFlash(win) {
     const el = $('#vignette');
     el.className = win ? 'flash-win' : 'flash-lose';
-    // retrigger animation
     void el.offsetWidth;
     el.classList.add('on');
     clearTimeout(this._vt);

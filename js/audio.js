@@ -102,4 +102,21 @@ export const sfx = {
   click() {
     playTone('triangle', 700, 500, 0.08, 0.07);
   },
+  coin() {
+    // cash pickup: bright double blip
+    playTone('square', 880, 880, 0.08, 0.06);
+    setTimeout(() => playTone('square', 1320, 1320, 0.08, 0.09), 55);
+  },
+  chime() {
+    // multiplier pickup: rising shimmer
+    playTone('triangle', 620, 1240, 0.12, 0.18);
+  },
+  rumble() {
+    // enemy hit the wall: deep ground-shaking boom
+    playNoise(0.5, 0.9, 190);
+    playTone('sine', 55, 30, 0.4, 0.7);
+  },
+  roundStart() {
+    [330, 440, 660].forEach((f, i) => setTimeout(() => playTone('triangle', f, f, 0.16, 0.16), i * 110));
+  },
 };

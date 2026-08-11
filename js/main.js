@@ -1,6 +1,6 @@
 // SIEGE — main game orchestration.
 import * as THREE from 'three';
-import { BETTING, ENEMIES, WEAPONS, AIMING, EFFECTS, MAP_INFO, drawPayout } from './config.js';
+import { BETTING, ENEMIES, WEAPONS, AIMING, EFFECTS, ROUND, MAP_INFO, drawPayout } from './config.js';
 import { buildMap, disposeMap } from './maps.js';
 import { EnemyManager } from './enemies.js';
 import { makeWeapon } from './weapons.js';
@@ -13,7 +13,129 @@ import { sfx, unlock as unlockAudio } from './audio.js';
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
+const rand = (a, b) => a + Math.random() * (b - a);
 
+// ---------------------------------------------------------------------------
+// Solve a launch from `muzzle` to land at `target` for the given weapon.
+//  style 'direct': fixed speed, aim straight with gravity-drop compensation
+//  style 'arc':    fixed elevation, bisect the speed that lands there
+// ---------------------------------------------------------------------------
+function solveLaunch(W, muzzle, target) {
+  const tx = target.x - muzzle.x, tz = target.z - muzzle.z;
+  const D = Math.max(0.1, Math.hypot(tx, tz));
+  const yaw = Math.atan2(-tx, -tz);
+  if (W.style === 'direct') {
+    const t = D / W.speed;
+    const aimY = target.y + 0.5 * W.gravity * t * t - muzzle.y;
+    const dir = new THREE.Vector3(tx, aimY, tz).normalize();
+    return { yaw, pitch: Math.asin(dir.y), speed: W.speed, dir };
+  }
+  const h = Math.max(0.1, muzzle.y - target.y);
+  const cosP = Math.cos(W.pitch), sinP = Math.sin(W.pitch);
+  const dist = (v) => {
+    const vy = v * sinP;
+    const t = (vy + Math.sqrt(vy * vy + 2 * W.gravity * h)) / W.gravity;
+    return v * cosP * t;
+  };
+  let lo = 5, hi = W.maxSolveSpeed;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (dist(mid) < D) lo = mid; else hi = mid;
+  }
+  const speed = (lo + hi) / 2;
+  const dir = new THREE.Vector3(tx / D * cosP, sinP, tz / D * cosP);
+  return { yaw, pitch: W.pitch, speed, dir };
+}
+
+// ---------------------------------------------------------------------------
+// Bot comrade: a flanking launcher that engages enemies on its own. Its
+// accuracy and fire rate are the round controller's steering handles.
+// ---------------------------------------------------------------------------
+class Bot {
+  constructor(game, mount) {
+    this.game = game;
+    this.weapon = makeWeapon(game.weaponKind, mount);
+    game.scene.add(this.weapon.root);
+    this.cd = rand(1.5, 3.5);
+    this.burst = 0;
+    this.burstTarget = null;
+  }
+
+  interval() {
+    const g = this.game;
+    return (g.round ? g.botInterval : 4.5) * rand(0.8, 1.3);
+  }
+
+  update(dt) {
+    this.weapon.update(dt);
+    const g = this.game;
+    if (g.state !== 'play') return;
+    this.cd -= dt;
+    if (this.cd > 0) return;
+
+    if (this.burst > 0) {
+      this.burst--;
+      this.fireAt(this.burstTarget, this.burstAcc);
+      this.cd = this.burst > 0 ? 0.13 : this.interval();
+      return;
+    }
+
+    const acc = g.round ? g.botAccuracy : 0.55;
+    const target = this.pickTarget(acc);
+    if (!target) { this.cd = 0.8; return; }
+    if (g.weaponDef.auto) {
+      this.burst = 5;
+      this.burstTarget = target;
+      this.burstAcc = acc;
+      this.cd = 0;
+    } else {
+      this.fireAt(target, acc);
+      this.cd = this.interval();
+    }
+  }
+
+  pickTarget(acc) {
+    const g = this.game;
+    const es = g.enemyMgr.enemies.filter((e) => {
+      const z = e.group.position.z;
+      return e.alive && z < -70 && z > -360;
+    });
+    if (!es.length) return null;
+    if (acc > 0.8 && g.round) {
+      // hunting mode: prefer the most valuable targets
+      const worth = (e) => e.role === 'cash' ? e.value : (e.value || 0) * Math.max(1, g.round.bet) * 1.6;
+      es.sort((a, b) => worth(b) - worth(a));
+      return es[Math.floor(Math.random() * Math.min(3, es.length))];
+    }
+    return es[Math.floor(Math.random() * es.length)];
+  }
+
+  fireAt(e, acc) {
+    const g = this.game;
+    const W = g.weaponDef;
+    const muzzle = this.weapon.muzzleWorld(this.weapon.muzzleLocal).clone();
+    const aimPoint = e.group.position.clone();
+    aimPoint.y += e.radius * 0.5;
+    // lead the target
+    let ft = W.style === 'direct' ? muzzle.distanceTo(aimPoint) / W.speed : 2.1;
+    aimPoint.z += e.speed * g.enemyMgr.speedScale * ft;
+    // deliberate error — how the controller makes comrades "miss more"
+    const err = (1 - acc) * 26;
+    aimPoint.x += (Math.random() - 0.5) * err;
+    aimPoint.z += (Math.random() - 0.5) * err;
+    const sol = solveLaunch(W, muzzle, aimPoint);
+    this.weapon.aim(sol.yaw, 0.6);
+    if (this.weapon.setPitch) this.weapon.setPitch(sol.pitch);
+    this.weapon.fire();
+    g.projectiles.spawn(W.projectile, W, muzzle, sol.dir.multiplyScalar(sol.speed));
+  }
+
+  dispose() {
+    this.game.scene.remove(this.weapon.root);
+  }
+}
+
+// ---------------------------------------------------------------------------
 class Game {
   constructor() {
     this.canvas = document.getElementById('game');
@@ -24,6 +146,7 @@ class Game {
 
     this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 1400);
     this.state = 'menu';           // 'menu' | 'transition' | 'play'
+    this.round = null;             // active invasion round, or null (idle)
     this.time = 0;
     this.orbitAngle = 0;
     const stored = localStorage.getItem('siege.balance');
@@ -35,6 +158,7 @@ class Game {
       onMenu: () => this.toMenu(),
       onMapChange: (name) => { sfx.click(); this.loadMap(name); },
       onStakeChange: () => sfx.click(),
+      onStartRound: () => this.startRound(),
     });
 
     this.slingshot = new Slingshot(document.getElementById('sling'), {
@@ -47,7 +171,9 @@ class Game {
     });
 
     this.mgAccum = 0;
-    this.stats = { bets: 0, wins: 0, losses: 0, wagered: 0, returned: 0 };
+    this.stats = { rounds: 0, wagered: 0, returned: 0 };
+    this.botAccuracy = ROUND.control.botAccuracyNeutral;
+    this.botInterval = ROUND.control.botIntervalNeutral;
     this.loadMap(this.ui.mapName);
     this.ui.setBalance(this.balance);
     this.ui.showMenu();
@@ -63,10 +189,12 @@ class Game {
 
   // ------------------------------------------------------------------ scene
   loadMap(name) {
+    if (this.round) this.abortRound();
     if (this.map) {
       this.effects.clearTransient();
       this.enemyMgr.clear();
       this.projectiles.clear();
+      for (const b of this.bots) b.dispose();
       disposeMap(this.map);
     }
     this.scene = new THREE.Scene();
@@ -85,7 +213,6 @@ class Game {
     const S = 90;
     Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 10, far: 400 });
     this.scene.add(sun);
-    // soft cool fill from the opposite side rounds out the flat shading
     const fill = new THREE.DirectionalLight(0xbcd4e8, 0.35);
     fill.position.set(-spos[0], spos[1] * 0.6, -spos[2]);
     this.scene.add(fill);
@@ -97,8 +224,11 @@ class Game {
     this.slingshot.autoMode = !!this.weaponDef.auto;
 
     this.enemyMgr = new EnemyManager(this.scene, this.map, ENEMIES[name]);
+    this.enemyMgr.decorate = (e) => this.decorateEnemy(e);
+    this.enemyMgr.onWall = (e) => this.handleWall(e);
     this.projectiles = new ProjectileManager(this.scene, this.map);
     this.effects = new Effects(this.scene, this.camera, document.getElementById('labels'));
+    this.bots = this.map.botMounts.map((m) => new Bot(this, m));
     this.cooldown = 0;
 
     // trajectory preview dots
@@ -140,53 +270,158 @@ class Game {
 
   toMenu() {
     sfx.click();
+    if (this.round) this.abortRound();
     this.state = 'menu';
     this.slingshot.enabled = false;
     this.slingshot.cancel();
     this.ui.showMenu();
   }
 
+  // ----------------------------------------------------------------- rounds
+  startRound() {
+    if (this.state !== 'play' || this.round) return;
+    const bet = this.ui.betAmount;
+    if (this.balance < bet) { this.ui.toast('Not enough balance for that bet'); return; }
+    unlockAudio();
+    this.balance -= bet;
+    this.persistBalance();
+    this.ui.setBalance(this.balance);
+    this.stats.rounds++;
+    this.stats.wagered += bet;
+
+    this.round = {
+      bet,
+      target: bet * drawPayout(ROUND.targets), // steered outcome for this round
+      cash: bet,
+      mult: 1.0,
+      tLeft: ROUND.duration,
+      ctrlT: 0,
+    };
+    this.enemyMgr.paceScale = ROUND.spawnScale;
+    this.enemyMgr.speedScale = 1;
+    // arm the whole field: every enemy already marching gets a value
+    for (const e of this.enemyMgr.enemies) this.decorateEnemy(e);
+    this.ui.roundStart(this.round);
+    sfx.roundStart();
+  }
+
+  endRound() {
+    const r = this.round;
+    const payout = Math.max(0, Math.round(r.cash * r.mult));
+    this.balance += payout;
+    this.stats.returned += payout;
+    this.persistBalance();
+    this.ui.setBalance(this.balance);
+    this.ui.roundEnd(payout, r.bet);
+    if (payout >= r.bet) sfx.win(payout >= r.bet * 3); else sfx.lose();
+    this.finishRoundCommon();
+    if (this.balance < BETTING.stakes[0]) {
+      this.balance = BETTING.startBalance;
+      this.persistBalance();
+      this.ui.setBalance(this.balance);
+      this.ui.toast('Balance refilled — on the house');
+    }
+  }
+
+  abortRound() {
+    // leaving mid-round (menu/map switch) refunds the stake
+    this.balance += this.round.bet;
+    this.stats.wagered -= this.round.bet;
+    this.stats.rounds--;
+    this.persistBalance();
+    this.ui.setBalance(this.balance);
+    this.ui.roundAbort();
+    this.finishRoundCommon();
+  }
+
+  finishRoundCommon() {
+    this.round = null;
+    this.enemyMgr.paceScale = 1;
+    this.enemyMgr.speedScale = 1;
+    this.botAccuracy = ROUND.control.botAccuracyNeutral;
+    this.botInterval = ROUND.control.botIntervalNeutral;
+    for (const e of this.enemyMgr.enemies) this.clearRole(e);
+  }
+
+  // steering: nudge the live total toward this round's drawn target
+  steer() {
+    const C = ROUND.control, r = this.round;
+    const p = 1 - r.tLeft / ROUND.duration;
+    const desired = r.bet + (r.target - r.bet) * p;
+    const total = r.cash * r.mult;
+    const scale = Math.max(r.bet, r.target, 1);
+    const norm = (total - desired) / scale;
+    if (norm < -C.deadband) {
+      // behind target → comrades rain hell
+      this.botAccuracy = C.botAccuracyHigh;
+      this.botInterval = C.botIntervalFast;
+      this.enemyMgr.paceScale = ROUND.spawnScale;
+      this.enemyMgr.speedScale = 1;
+    } else if (norm > C.deadband) {
+      // ahead of target → comrades go cold, invasion floods the wall
+      this.botAccuracy = C.botAccuracyLow;
+      this.botInterval = C.botIntervalSlow;
+      this.enemyMgr.paceScale = ROUND.spawnScale * C.inflowBoost;
+      this.enemyMgr.speedScale = C.speedBoost;
+    } else {
+      this.botAccuracy = C.botAccuracyNeutral;
+      this.botInterval = C.botIntervalNeutral;
+      this.enemyMgr.paceScale = ROUND.spawnScale;
+      this.enemyMgr.speedScale = 1;
+    }
+  }
+
+  // ------------------------------------------------------- enemy round roles
+  decorateEnemy(e) {
+    if (!this.round || e.role) return;
+    const bet = this.round.bet;
+    const vals = ROUND.values[e.def.tier];
+    const role = Math.random() < ROUND.roleSplit ? 'cash' : 'mult';
+    e.role = role;
+    if (role === 'cash') {
+      e.value = Math.max(1, Math.round(rand(vals.cash[0], vals.cash[1]) * bet));
+      e.wallValue = Math.max(1, Math.round(rand(vals.wallCash[0], vals.wallCash[1]) * bet));
+    } else {
+      e.value = +rand(vals.mult[0], vals.mult[1]).toFixed(2);
+      e.wallValue = +rand(vals.wallMult[0], vals.wallMult[1]).toFixed(2);
+    }
+    // colour coding: glowing base ring + a pennant flag
+    const color = ROUND.colors[role];
+    const mat = roleMats[role];
+    const ring = new THREE.Mesh(ringGeo, mat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.scale.setScalar(e.radius * 1.2);
+    ring.position.y = e.made.ship ? 0.5 : 0.15;
+    e.group.add(ring);
+    const banner = new THREE.Group();
+    const poleH = e.made.ship ? e.radius * 2.6 + 3 : e.radius * 1.6 + 3;
+    const pole = new THREE.Mesh(poleGeo, poleMat);
+    pole.scale.y = poleH;
+    pole.position.y = poleH / 2;
+    banner.add(pole);
+    const flag = new THREE.Mesh(flagGeo, mat);
+    flag.position.set(0.62, poleH - 0.4, 0);
+    banner.add(flag);
+    banner.position.set(e.radius * 0.35, 0, 0);
+    e.group.add(banner);
+    e.roleMeshes = [ring, banner];
+  }
+
+  clearRole(e) {
+    if (e.roleMeshes) for (const m of e.roleMeshes) e.group.remove(m);
+    e.roleMeshes = null;
+    e.role = null;
+  }
+
   // ------------------------------------------------------------------- aim
-  // Target-point aiming: vertical pull picks a distance down the field,
-  // horizontal pull picks the lateral offset; the launch is solved to land
-  // exactly there.
   computeAim(pull) {
-    const W = this.weaponDef;
     const max = this.slingshot.maxPull;
     const dyFrac = Math.min(1, Math.max(0, pull.dy) / max);
     const R = AIMING.rangeMin + Math.pow(dyFrac, AIMING.rangeCurve) * (AIMING.rangeMax - AIMING.rangeMin);
     const X = -(pull.dx / max) * AIMING.lateralMax; // pull left → aim right
     const muzzle = this.weapon.muzzleWorld(this.weapon.muzzleLocal);
     const target = _v1.set(X, this.map.groundHeight(X, -R, this.time) + 1.2, -R);
-    const tx = target.x - muzzle.x, tz = target.z - muzzle.z;
-    const D = Math.hypot(tx, tz);
-    const yaw = Math.atan2(-tx, -tz);
-
-    if (W.style === 'direct') {
-      // aim straight at the target, nudged up to compensate gravity drop
-      const t = D / W.speed;
-      const aimY = target.y + 0.5 * W.gravity * t * t - muzzle.y;
-      const dir = _v2.set(tx, aimY, tz).normalize().clone();
-      return { yaw, pitch: Math.asin(dir.y), speed: W.speed, dir };
-    }
-
-    // arc: fixed elevation, solve launch speed so the shot lands at distance D.
-    // Landing distance for speed v from height h: monotonic in v → bisect.
-    const h = Math.max(0.1, muzzle.y - target.y);
-    const cosP = Math.cos(W.pitch), sinP = Math.sin(W.pitch);
-    const dist = (v) => {
-      const vy = v * sinP;
-      const t = (vy + Math.sqrt(vy * vy + 2 * W.gravity * h)) / W.gravity;
-      return v * cosP * t;
-    };
-    let lo = 5, hi = W.maxSolveSpeed;
-    for (let i = 0; i < 24; i++) {
-      const mid = (lo + hi) / 2;
-      if (dist(mid) < D) lo = mid; else hi = mid;
-    }
-    const speed = (lo + hi) / 2;
-    const dir = _v2.set(tx / D * cosP, sinP, tz / D * cosP).clone();
-    return { yaw, pitch: W.pitch, speed, dir };
+    return solveLaunch(this.weaponDef, muzzle, target);
   }
 
   updateTrajectoryPreview(aim, show) {
@@ -197,7 +432,7 @@ class Game {
     }
     const pos = _v2.copy(this.weapon.muzzleWorld(this.weapon.muzzleLocal));
     const vel = aim.dir.clone().multiplyScalar(aim.speed);
-    const step = this.weaponDef.auto ? 0.05 : 0.09;
+    const step = this.weaponDef.style === 'direct' ? 0.05 : 0.09;
     let i = 0;
     for (let n = 0; n < 90 && i < dots.length; n++) {
       vel.y -= this.weaponDef.gravity * step;
@@ -214,22 +449,15 @@ class Game {
   }
 
   // ------------------------------------------------------------------ fire
-  canAffordBet() {
-    return this.balance >= this.ui.betAmount;
-  }
-
   fireBallistic(pull) {
     if (this.state !== 'play' || this.cooldown > 0) return;
-    if (!this.canAffordBet()) { this.ui.toast('Not enough balance for that bet'); return; }
     const aim = this.computeAim(pull);
     this.launch(aim);
     this.cooldown = this.weaponDef.cooldown;
   }
 
   fireAuto() {
-    if (!this.canAffordBet()) { this.ui.toast('Not enough balance for that bet'); return; }
     const aim = this.computeAim(this.slingshot.pull);
-    // slight spread per round
     aim.dir.applyAxisAngle(UP, (Math.random() - 0.5) * this.weaponDef.spread * 2);
     aim.dir.y += (Math.random() - 0.5) * this.weaponDef.spread;
     this.launch(aim);
@@ -245,10 +473,9 @@ class Game {
     sfx.fire(this.weaponDef.projectile);
   }
 
-  // --------------------------------------------------------------- betting
+  // --------------------------------------------------------------- scoring
   resolveImpact(point, projectile, hitEnemies) {
     if (hitEnemies.length === 0) {
-      // scenery hit
       if (this.map.isWater) {
         this.effects.splash(point);
         if (projectile.kind !== 'bullet') sfx.splash();
@@ -264,46 +491,54 @@ class Game {
 
     for (const enemy of hitEnemies) {
       if (!enemy.alive) continue;
-      const bet = this.ui.betAmount;
-      if (this.balance < bet) break; // out of funds mid-splash
-
-      // ---- the bet: stake placed on hit, resolved instantly ----
-      this.balance -= bet;
-      const x = drawPayout(enemy.def.payouts);
-      const win = Math.round(bet * x);
-      this.balance += win;
-      this.stats.bets++;
-      this.stats.wagered += bet;
-      this.stats.returned += win;
-      if (win > 0) this.stats.wins++; else this.stats.losses++;
-      this.persistBalance();
-      this.ui.setBalance(this.balance);
-
       const epos = enemy.group.position.clone().setY(enemy.group.position.y + enemy.radius);
-      const spectacle = Math.min(2, 0.25 + (x / 8) + (projectile.kind === 'boulder' ? 0.2 : projectile.kind === 'cannonball' ? 0.15 : 0));
+      let spectacle = 0.35;
+
+      if (this.round && enemy.role) {
+        const r = this.round;
+        if (enemy.role === 'cash') {
+          r.cash += enemy.value;
+          spectacle = 0.35 + Math.min(1.6, enemy.value / Math.max(1, r.bet));
+          this.effects.floatText(epos, `+$${enemy.value.toLocaleString()}`, enemy.value >= r.bet * 1.5 ? 'label-jackpot' : 'label-win');
+          sfx.coin();
+        } else {
+          r.mult = +(r.mult + enemy.value).toFixed(2);
+          spectacle = 0.35 + Math.min(1.6, enemy.value * 2);
+          this.effects.floatText(epos, `+${enemy.value.toFixed(2)}×`, 'label-mult');
+          sfx.chime();
+        }
+        this.ui.roundTick(r);
+        if (spectacle > 1.2) this.effects.vibrate(EFFECTS.vibrateBigWin);
+      }
+
       this.effects.explosion(epos, spectacle, projectile.kind);
       this.effects.shatter(enemy.group, point, 0.7 + spectacle * 0.5);
       this.enemyMgr.remove(enemy);
       sfx.explosion(spectacle);
-
-      if (win > 0) {
-        const big = x >= 10;
-        this.effects.floatText(epos, `+${win.toLocaleString()}`, big ? 'label-jackpot' : 'label-win');
-        this.ui.resultFlash(true);
-        sfx.win(big);
-        if (big) this.effects.vibrate(EFFECTS.vibrateBigWin);
-      } else {
-        this.effects.floatText(epos, `−${bet.toLocaleString()}`, 'label-lose');
-        this.ui.resultFlash(false);
-        sfx.lose();
-      }
     }
+  }
 
-    if (this.balance < BETTING.stakes[0]) {
-      this.balance = BETTING.startBalance;
-      this.persistBalance();
-      this.ui.setBalance(this.balance);
-      this.ui.toast('Balance refilled — on the house');
+  handleWall(e) {
+    const pos = e.group.position.clone();
+    pos.y += e.radius * 1.2;
+    if (this.round && e.role) {
+      const r = this.round;
+      if (e.role === 'cash') {
+        r.cash = Math.max(0, Math.round(r.cash - e.wallValue));
+        this.effects.floatText(pos, `−$${e.wallValue.toLocaleString()}`, 'label-lose');
+      } else {
+        r.mult = Math.max(0, +(r.mult - e.wallValue).toFixed(2));
+        this.effects.floatText(pos, `−${e.wallValue.toFixed(2)}×`, 'label-lose');
+      }
+      this.ui.roundTick(r);
+      // the wall takes the blow — rumble
+      this.effects.addShake(1.5);
+      this.effects.vibrate(EFFECTS.vibrateBigWin);
+      this.ui.resultFlash(false);
+      sfx.rumble();
+    } else if (this.state === 'play') {
+      this.effects.addShake(0.3);
+      sfx.thud();
     }
   }
 
@@ -321,8 +556,21 @@ class Game {
     this.map.update(t, dt);
     this.enemyMgr.update(dt, t, t);
     this.weapon.update(dt);
+    for (const b of this.bots) b.update(dt);
     this.effects.update(dt, this.renderer);
     this.cooldown = Math.max(0, this.cooldown - dt);
+
+    if (this.round && this.state === 'play') {
+      const r = this.round;
+      r.tLeft -= dt;
+      r.ctrlT -= dt;
+      if (r.ctrlT <= 0) {
+        r.ctrlT = ROUND.control.interval;
+        this.steer();
+      }
+      this.ui.roundTick(r);
+      if (r.tLeft <= 0) this.endRound();
+    }
 
     if (this.state === 'menu') {
       this.orbitAngle += dt * 0.14;
@@ -345,7 +593,6 @@ class Game {
         this.slingshot.enabled = true;
       }
     } else {
-      // play: aim, preview, auto-fire, projectiles
       const pulling = this.slingshot.active && this.slingshot.pull.frac > 0.02;
       let aim = null;
       if (pulling) {
@@ -366,7 +613,6 @@ class Game {
         this.mgAccum = 1 / (this.weaponDef.fireRate || 1); // first round fires instantly
       }
 
-      // camera: base position + slight aim sway + shake
       const sway = pulling ? aim.yaw * 0.18 : 0;
       _v1.copy(this.map.cameraPos);
       const sh = this.effects.shake;
@@ -387,5 +633,15 @@ class Game {
     this.renderer.render(this.scene, this.camera);
   }
 }
+
+// shared role-marker resources
+const ringGeo = new THREE.RingGeometry(0.85, 1.08, 24);
+const poleGeo = new THREE.CylinderGeometry(0.05, 0.06, 1, 6);
+const poleMat = new THREE.MeshBasicMaterial({ color: 0x3a3a3e });
+const flagGeo = new THREE.BoxGeometry(1.15, 0.65, 0.08);
+const roleMats = {
+  cash: new THREE.MeshBasicMaterial({ color: ROUND.colors.cash, transparent: true, opacity: 0.85, side: THREE.DoubleSide }),
+  mult: new THREE.MeshBasicMaterial({ color: ROUND.colors.mult, transparent: true, opacity: 0.85, side: THREE.DoubleSide }),
+};
 
 window.SIEGE = new Game();

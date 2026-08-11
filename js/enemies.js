@@ -628,6 +628,10 @@ export class EnemyManager {
     this.defs = defs;
     this.enemies = [];
     this.nextSpawn = 0.5;
+    this.paceScale = 1;    // spawn-interval multiplier (rounds spawn faster)
+    this.speedScale = 1;   // movement multiplier (suppression pushes enemies in)
+    this.decorate = null;  // (enemy) => void — round role assignment
+    this.onWall = null;    // (enemy) => void — enemy reached the wall
   }
 
   spawn() {
@@ -659,18 +663,19 @@ export class EnemyManager {
     };
     this.scene.add(g);
     this.enemies.push(e);
+    if (this.decorate) this.decorate(e);
   }
 
   update(dt, t, waterTime) {
     this.nextSpawn -= dt;
     if (this.nextSpawn <= 0 && this.enemies.length < SPAWNING.maxEnemies) {
       this.spawn();
-      this.nextSpawn = rand(SPAWNING.interval[0], SPAWNING.interval[1]);
+      this.nextSpawn = rand(SPAWNING.interval[0], SPAWNING.interval[1]) * this.paceScale;
     }
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       const g = e.group;
-      g.position.z += e.speed * dt;
+      g.position.z += e.speed * this.speedScale * dt;
       const drift = Math.sin(t * e.driftFreq + e.phase) * e.driftAmp;
       g.position.x = e.baseX + drift;
 
@@ -687,7 +692,10 @@ export class EnemyManager {
       }
       if (m.anim) m.anim(t + e.phase);
 
-      if (g.position.z > SPAWNING.despawnZ) this.remove(e, i);
+      if (g.position.z > SPAWNING.despawnZ) {
+        if (this.onWall) this.onWall(e);
+        this.remove(e, i);
+      }
     }
   }
 

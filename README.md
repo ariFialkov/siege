@@ -15,13 +15,15 @@ bet that resolves instantly — the scene never stops.
 ## How it plays
 
 - The menu shows a rotating cinematic of the selected map; toggle maps with the arrows.
-- Enemies continuously stream in from the horizon and approach until they slip
-  beneath your elevated view — or you destroy them first.
-- **Every hit is a bet**: the current stake × multiplier is wagered, and an
-  outcome is drawn from the hit enemy's payout table (rarer enemies carry
-  richer tables). Wins and losses flash on screen without interrupting play.
-- Explosion size scales with the win amount and the projectile used; destroyed
-  enemies break apart into physical debris.
+- **Invasion rounds**: press *Defend* to stake your bet on a 30-second
+  invasion. Your pot starts at the bet (cash) with a 1.00× multiplier.
+- Enemies carry either **cash** (gold flag & ring) or a **multiplier bump**
+  (violet flag & ring). Destroy them to collect; every enemy that reaches
+  your wall subtracts its penalty — with a screen-shaking rumble.
+- Two **bot comrades** man flanking launchers and fight alongside you.
+- At the horn, the round pays out `cash × multiplier`. Rarer enemies carry
+  bigger values; explosion size scales with the value collected.
+- Between rounds the invasion keeps streaming — free target practice.
 
 ### Controls
 
@@ -74,9 +76,12 @@ dependencies — ready to zip, upload, or serve as-is.
 
 All gameplay numbers live in **`js/config.js`**:
 
-- `PAYOUTS` — weighted outcome tables (`{ x: multiplier, w: weight }`) per
-  rarity tier; `ENEMIES` assigns a table, spawn weight, speed, and hit radius
-  to every enemy type.
+- `ROUND.targets` — the weighted table a round's steered outcome is drawn
+  from (`{ x: payout multiplier, w: weight }`); its EV is the game's RTP.
+- `ROUND.values` — per-tier cash/multiplier pickups and wall penalties;
+  `ROUND.control` — how hard the bot comrades and enemy inflow steer the
+  round toward its target.
+- `ENEMIES` — spawn weight, speed, hit radius, and value tier per enemy.
 - `BETTING` — starting balance, stake options, multiplier chips.
 - `WEAPONS` — projectile speeds, gravity, splash radius, fire rate.
 - `SPAWNING` / `AIMING` / `EFFECTS` — pacing, slingshot feel, shake/haptics.

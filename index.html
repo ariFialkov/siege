@@ -33,7 +33,8 @@
       text-shadow: 0 2px 8px rgba(0,0,0,.55);
       transform: translate(-50%, -50%);
     }
-    .label-win { color: #6dff8f; }
+    .label-win { color: #ffc23d; }
+    .label-mult { color: #c77dff; }
     .label-lose { color: #ff6d6d; font-size: clamp(14px, 2.6vw, 22px); }
     .label-jackpot {
       color: #ffd24a; font-size: clamp(26px, 5vw, 44px);
@@ -126,6 +127,60 @@
     }
     @keyframes hintpulse { 0%,100% { opacity: .45; } 50% { opacity: .95; } }
 
+    /* ---------- invasion round HUD ---------- */
+    #round-hud {
+      position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%;
+      transform: translateX(-50%); display: flex; flex-direction: column;
+      align-items: center; gap: 7px; pointer-events: none; width: min(74vw, 420px);
+    }
+    #round-timer {
+      width: 100%; height: 10px; border-radius: 999px; overflow: hidden;
+      background: rgba(10,14,20,.55); border: 1px solid rgba(255,255,255,.12); position: relative;
+    }
+    #round-timer-fill {
+      height: 100%; width: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, #ffdf7e, #f0b428); transition: width .15s linear;
+    }
+    #round-timer-fill.urgent { background: linear-gradient(90deg, #ff9d6d, #ff5040); }
+    #round-secs {
+      position: absolute; right: 8px; top: -2px; font-size: 10px; font-weight: 800;
+      color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.7); line-height: 14px;
+    }
+    #round-total { display: flex; gap: 8px; align-items: baseline; padding: 6px 16px; font-weight: 800; }
+    #rt-cash  { color: #ffc23d; font-size: 17px; }
+    #rt-mult  { color: #c77dff; font-size: 17px; }
+    #rt-total { color: #6dff8f; font-size: 20px; }
+    .rt-op { color: #8b98a5; font-size: 13px; font-weight: 600; }
+
+    #defend-btn {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      bottom: calc(max(12px, env(safe-area-inset-bottom)) + 74px);
+      padding: 13px 36px; border-radius: 999px; font-size: 16px; font-weight: 800; letter-spacing: .08em;
+      color: #17120a; background: linear-gradient(#ffdf7e, #f0b428);
+      box-shadow: 0 5px 20px rgba(240, 180, 40, .4); transition: transform .12s;
+    }
+    #defend-btn:active { transform: translateX(-50%) scale(.95); }
+    #bet-panel.locked { opacity: .45; pointer-events: none; }
+
+    #round-result {
+      position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%);
+      text-align: center; pointer-events: none; opacity: 0;
+    }
+    #round-result.on { animation: rrpop 3.2s ease-out forwards; }
+    #rr-title { font-size: clamp(24px, 5vw, 42px); font-weight: 900; letter-spacing: .1em; text-shadow: 0 3px 16px rgba(0,0,0,.6); }
+    #rr-amount { font-size: clamp(30px, 7vw, 56px); font-weight: 900; margin-top: 6px; text-shadow: 0 3px 20px rgba(0,0,0,.6); }
+    .rr-big #rr-title { color: #ffd24a; } .rr-big #rr-amount { color: #ffd24a; text-shadow: 0 0 26px rgba(255,210,74,.8); }
+    .rr-win #rr-title { color: #6dff8f; } .rr-win #rr-amount { color: #6dff8f; }
+    .rr-part #rr-title { color: #ffb26d; } .rr-part #rr-amount { color: #ffb26d; }
+    .rr-lose #rr-title { color: #ff6d6d; } .rr-lose #rr-amount { color: #ff6d6d; }
+    @keyframes rrpop {
+      0% { opacity: 0; transform: translate(-50%, -50%) scale(.6); }
+      8% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+      14% { transform: translate(-50%, -50%) scale(1); }
+      82% { opacity: 1; }
+      100% { opacity: 0; transform: translate(-50%, -56%) scale(.98); }
+    }
+
     #toast {
       position: fixed; top: 18%; left: 50%; transform: translateX(-50%);
       padding: 10px 20px; border-radius: 999px; font-size: 14px; font-weight: 600;
@@ -163,13 +218,21 @@
       <div id="balance-wrap" class="panel"><span class="cap">BALANCE</span><span id="balance" class="gold">0</span></div>
       <button id="menu-btn" class="panel">MENU</button>
     </div>
+    <div id="round-hud" class="hidden">
+      <div id="round-timer"><div id="round-timer-fill"></div><span id="round-secs">30s</span></div>
+      <div id="round-total" class="panel">
+        <span id="rt-cash">$0</span><span class="rt-op">×</span><span id="rt-mult">1.00×</span><span class="rt-op">=</span><span id="rt-total">$0</span>
+      </div>
+    </div>
+    <div id="round-result" class="hidden"><div id="rr-title"></div><div id="rr-amount"></div></div>
     <div id="hint">pull back anywhere &nbsp;·&nbsp; release to fire</div>
+    <button id="defend-btn">⚔&ensp;DEFEND&ensp;·&ensp;BET $<span id="defend-bet">10</span></button>
     <div id="bet-panel" class="panel">
       <div id="stake">
         <button id="stake-minus" aria-label="Decrease stake">−</button>
         <div>
           <div id="stake-value">10</div>
-          <div id="bet-total">bet 10</div>
+          <div id="bet-total">stake</div>
         </div>
         <button id="stake-plus" aria-label="Increase stake">+</button>
       </div>
