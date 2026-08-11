@@ -24,6 +24,8 @@ export class UI {
     $('#menu-btn').addEventListener('click', () => cb.onMenu());
     $('#stake-minus').addEventListener('click', () => this.bumpStake(-1));
     $('#stake-plus').addEventListener('click', () => this.bumpStake(1));
+    $('#menu-stake-minus').addEventListener('click', () => this.bumpStake(-1));
+    $('#menu-stake-plus').addEventListener('click', () => this.bumpStake(1));
     $('#defend-btn').addEventListener('click', () => cb.onStartRound());
 
     const multBox = $('#multipliers');
@@ -75,6 +77,7 @@ export class UI {
   refreshBet() {
     $('#stake-value').textContent = this.stake;
     $('#defend-bet').textContent = this.betAmount.toLocaleString();
+    $('#menu-bet').textContent = this.betAmount.toLocaleString();
     [...document.querySelectorAll('#multipliers .chip')].forEach((el, i) => {
       el.classList.toggle('active', i === this.multIndex);
     });

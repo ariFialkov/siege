@@ -98,13 +98,12 @@ class Bot {
     const g = this.game;
     const es = g.enemyMgr.enemies.filter((e) => {
       const z = e.group.position.z;
-      return e.alive && z < -70 && z > -360;
+      return e.alive && z < -45 && z > -360;
     });
     if (!es.length) return null;
     if (acc > 0.8 && g.round) {
-      // hunting mode: prefer the most valuable targets
-      const worth = (e) => e.role === 'cash' ? e.value : (e.value || 0) * Math.max(1, g.round.bet) * 1.6;
-      es.sort((a, b) => worth(b) - worth(a));
+      // hunting mode: prefer the biggest (rarest) targets on the field
+      es.sort((a, b) => b.radius - a.radius);
       return es[Math.floor(Math.random() * Math.min(3, es.length))];
     }
     return es[Math.floor(Math.random() * es.length)];
@@ -119,8 +118,9 @@ class Bot {
     // lead the target
     let ft = W.style === 'direct' ? muzzle.distanceTo(aimPoint) / W.speed : 2.1;
     aimPoint.z += e.speed * g.enemyMgr.speedScale * ft;
-    // deliberate error — how the controller makes comrades "miss more"
-    const err = (1 - acc) * 26;
+    // deliberate error — how the controller makes comrades "miss more";
+    // at zero accuracy shots land well wide of anything
+    const err = (1 - acc) * 42;
     aimPoint.x += (Math.random() - 0.5) * err;
     aimPoint.z += (Math.random() - 0.5) * err;
     const sol = solveLaunch(W, muzzle, aimPoint);
@@ -258,13 +258,14 @@ class Game {
   }
 
   // ------------------------------------------------------------------ state
-  startPlay() {
+  startPlay(withRound = true) {
     sfx.click();
     unlockAudio();
     this.state = 'transition';
     this.transT = 0;
     this.transFrom = this.camera.position.clone();
     this.transLook = this.map.menuOrbit.center.clone();
+    this.pendingRound = withRound; // fly in, then the round starts itself
     this.ui.showHud();
   }
 
@@ -305,9 +306,12 @@ class Game {
     sfx.roundStart();
   }
 
+  // The settlement guarantee: the payout is the drawn target, to the dollar.
+  // The 30 seconds of play are choreography that converges the display onto
+  // it — skill changes the show, never the result.
   endRound() {
     const r = this.round;
-    const payout = Math.max(0, Math.round(r.cash * r.mult));
+    const payout = Math.max(0, Math.round(r.target));
     this.balance += payout;
     this.stats.returned += payout;
     this.persistBalance();
@@ -369,25 +373,79 @@ class Game {
       this.enemyMgr.paceScale = ROUND.spawnScale;
       this.enemyMgr.speedScale = 1;
     }
+
+    // endgame reckoning: force decisive events so the display converges on
+    // the target before the horn. Lifts start early — arc shots need flight
+    // time to land; breach sprints are fast so they start later.
+    if (norm < -0.04 && r.tLeft < 9) {
+      // need a lift: comrades snap off immediate, dead-accurate volleys
+      this.botAccuracy = 1;
+      this.botInterval = 0.6;
+      for (const b of this.bots) b.cd = Math.min(b.cd, 0.1);
+    } else if (norm > 0.04 && r.tLeft < 3.5) {
+      // need a drop: the flagged enemy nearest the wall breaks into a sprint
+      let runner = null;
+      for (const e of this.enemyMgr.enemies) {
+        if (!e.role || e.sprinting) continue;
+        if (!runner || e.group.position.z > runner.group.position.z) runner = e;
+      }
+      if (runner) {
+        runner.sprinting = true;
+        runner.speed = Math.max(runner.speed * 3, 30);
+      }
+    }
+  }
+
+  // ---------------------------------------------------- settlement values
+  // desired position of the total along the bet→target trajectory
+  desiredTotal(secondsAhead = 0) {
+    const r = this.round;
+    const p = Math.min(1, (ROUND.duration - r.tLeft + secondsAhead) / ROUND.duration);
+    return r.bet + (r.target - r.bet) * p;
+  }
+
+  // 0 → 1 as the horn approaches: events close more of the gap, value caps
+  // relax, and the endgame mechanics kick in so the display lands on target
+  get urgency() {
+    return Math.min(1, Math.max(0, (5 - this.round.tLeft) / 5));
+  }
+
+  // size a hit's reward from the gap that still needs closing
+  hitValue(e) {
+    const r = this.round, S = ROUND.settle, u = this.urgency;
+    const caps = ROUND.values[e.def.tier];
+    const gap = this.desiredTotal(S.lookahead * (1 - u)) - r.cash * r.mult;
+    const token = Math.max(1, r.bet * S.token);
+    const share = rand(S.hitShare[0], S.hitShare[1]) * (1 - u) + u; // → 1 at the horn
+    let dollars = gap > 0 ? gap * share : token;
+    if (e.role === 'cash') {
+      return Math.max(1, Math.round(Math.min(dollars, caps.cashCap * r.bet * (1 + u * 2))));
+    }
+    const dm = dollars / Math.max(r.cash, 1);
+    return +Math.min(Math.max(0.02, dm), caps.multCap * (1 + u)).toFixed(2);
+  }
+
+  // size a wall breach's penalty the same way, in the other direction
+  wallValue(e) {
+    const r = this.round, S = ROUND.settle, u = this.urgency;
+    const caps = ROUND.values[e.def.tier];
+    const gap = this.desiredTotal(S.lookahead * (1 - u)) - r.cash * r.mult;
+    const token = Math.max(1, r.bet * S.token);
+    const share = rand(S.wallShare[0], S.wallShare[1]) * (1 - u) + u;
+    let dollars = gap < 0 ? -gap * share : token;
+    if (e.role === 'cash') {
+      return Math.max(1, Math.round(Math.min(dollars, caps.cashCap * r.bet * (1 + u * 2))));
+    }
+    const dm = dollars / Math.max(r.cash, 1);
+    return +Math.min(Math.max(0.02, dm), caps.multCap * (1 + u)).toFixed(2);
   }
 
   // ------------------------------------------------------- enemy round roles
   decorateEnemy(e) {
     if (!this.round || e.role) return;
-    const bet = this.round.bet;
-    const vals = ROUND.values[e.def.tier];
-    const role = Math.random() < ROUND.roleSplit ? 'cash' : 'mult';
-    e.role = role;
-    if (role === 'cash') {
-      e.value = Math.max(1, Math.round(rand(vals.cash[0], vals.cash[1]) * bet));
-      e.wallValue = Math.max(1, Math.round(rand(vals.wallCash[0], vals.wallCash[1]) * bet));
-    } else {
-      e.value = +rand(vals.mult[0], vals.mult[1]).toFixed(2);
-      e.wallValue = +rand(vals.wallMult[0], vals.wallMult[1]).toFixed(2);
-    }
+    e.role = Math.random() < ROUND.roleSplit ? 'cash' : 'mult';
     // colour coding: glowing base ring + a pennant flag
-    const color = ROUND.colors[role];
-    const mat = roleMats[role];
+    const mat = roleMats[e.role];
     const ring = new THREE.Mesh(ringGeo, mat);
     ring.rotation.x = -Math.PI / 2;
     ring.scale.setScalar(e.radius * 1.2);
@@ -496,15 +554,16 @@ class Game {
 
       if (this.round && enemy.role) {
         const r = this.round;
+        const v = this.hitValue(enemy);
         if (enemy.role === 'cash') {
-          r.cash += enemy.value;
-          spectacle = 0.35 + Math.min(1.6, enemy.value / Math.max(1, r.bet));
-          this.effects.floatText(epos, `+$${enemy.value.toLocaleString()}`, enemy.value >= r.bet * 1.5 ? 'label-jackpot' : 'label-win');
+          r.cash += v;
+          spectacle = 0.35 + Math.min(1.6, v / Math.max(1, r.bet));
+          this.effects.floatText(epos, `+$${v.toLocaleString()}`, v >= r.bet * 1.5 ? 'label-jackpot' : 'label-win');
           sfx.coin();
         } else {
-          r.mult = +(r.mult + enemy.value).toFixed(2);
-          spectacle = 0.35 + Math.min(1.6, enemy.value * 2);
-          this.effects.floatText(epos, `+${enemy.value.toFixed(2)}×`, 'label-mult');
+          r.mult = +(r.mult + v).toFixed(2);
+          spectacle = 0.35 + Math.min(1.6, v * 2);
+          this.effects.floatText(epos, `+${v.toFixed(2)}×`, 'label-mult');
           sfx.chime();
         }
         this.ui.roundTick(r);
@@ -523,12 +582,15 @@ class Game {
     pos.y += e.radius * 1.2;
     if (this.round && e.role) {
       const r = this.round;
+      const v = this.wallValue(e);
       if (e.role === 'cash') {
-        r.cash = Math.max(0, Math.round(r.cash - e.wallValue));
-        this.effects.floatText(pos, `−$${e.wallValue.toLocaleString()}`, 'label-lose');
+        r.cash = Math.max(0, Math.round(r.cash - v));
+        this.effects.floatText(pos, `−$${v.toLocaleString()}`, 'label-lose');
       } else {
-        r.mult = Math.max(0, +(r.mult - e.wallValue).toFixed(2));
-        this.effects.floatText(pos, `−${e.wallValue.toFixed(2)}×`, 'label-lose');
+        // never zero the multiplier unless the round is heading for a bust
+        const floor = r.target > 0 ? ROUND.settle.multFloor : 0;
+        r.mult = Math.max(floor, +(r.mult - v).toFixed(2));
+        this.effects.floatText(pos, `−${v.toFixed(2)}×`, 'label-lose');
       }
       this.ui.roundTick(r);
       // the wall takes the blow — rumble
@@ -568,6 +630,13 @@ class Game {
         r.ctrlT = ROUND.control.interval;
         this.steer();
       }
+      // final tally: in the last moment the counter slides onto the exact
+      // result, so the display always agrees with the banner
+      if (r.tLeft < 1.2) {
+        const wanted = Math.max(0, r.target) / Math.max(r.mult, 0.01);
+        r.cash += (wanted - r.cash) * Math.min(1, 6 * dt);
+        if (r.tLeft < 0.15) r.cash = wanted;
+      }
       this.ui.roundTick(r);
       if (r.tLeft <= 0) this.endRound();
     }
@@ -591,6 +660,10 @@ class Game {
       if (this.transT >= 1) {
         this.state = 'play';
         this.slingshot.enabled = true;
+        if (this.pendingRound) {
+          this.pendingRound = false;
+          this.startRound();
+        }
       }
     } else {
       const pulling = this.slingshot.active && this.slingshot.pull.frac > 0.02;

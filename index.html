@@ -86,6 +86,12 @@
       box-shadow: 0 6px 24px rgba(240, 180, 40, .38); transition: transform .12s;
     }
     #play-btn:active { transform: scale(.96); }
+    #menu-bet-row { display: flex; align-items: center; gap: 12px; }
+    #menu-bet-row .mini {
+      width: 46px; height: 46px; border-radius: 50%; font-size: 20px; font-weight: 700;
+      color: #eef2f6; background: rgba(10,14,20,.62);
+    }
+    #menu-bet-row .mini:active { background: rgba(255,255,255,.18); }
     #menu-balance-wrap { font-size: 14px; color: #aab6c2; padding: 8px 18px; }
     #menu-balance { color: #ffd24a; font-weight: 700; }
 
@@ -208,7 +214,11 @@
         </div>
         <button class="arrow" id="map-next" aria-label="Next map">›</button>
       </div>
-      <button id="play-btn">PLAY</button>
+      <div id="menu-bet-row">
+        <button id="menu-stake-minus" class="panel mini" aria-label="Decrease stake">−</button>
+        <button id="play-btn">⚔&ensp;DEFEND&ensp;·&ensp;$<span id="menu-bet">10</span></button>
+        <button id="menu-stake-plus" class="panel mini" aria-label="Increase stake">+</button>
+      </div>
       <div id="menu-balance-wrap" class="panel">Balance&ensp;<span id="menu-balance">0</span></div>
     </div>
   </div>

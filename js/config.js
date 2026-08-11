@@ -84,26 +84,38 @@ export const ROUND = {
     { x: 15, w: 0.4 },
   ],
   roleSplit: 0.6,           // fraction of enemies carrying cash (rest carry mult)
-  // per-tier values: cash/wallCash are fractions of the round bet;
-  // mult/wallMult are absolute multiplier deltas
+  // per-tier CAPS for displayed values (fractions of the round bet for cash,
+  // absolute deltas for mult). Actual values are computed live by the
+  // settlement controller; these keep them looking tier-plausible.
   values: {
-    common:   { cash: [0.15, 0.35], mult: [0.05, 0.12], wallCash: [0.2, 0.45],  wallMult: [0.08, 0.15] },
-    uncommon: { cash: [0.4, 0.8],   mult: [0.12, 0.22], wallCash: [0.45, 0.9],  wallMult: [0.12, 0.22] },
-    rare:     { cash: [0.8, 1.6],   mult: [0.22, 0.4],  wallCash: [0.9, 1.6],   wallMult: [0.2, 0.35] },
-    jackpot:  { cash: [2, 4],       mult: [0.5, 1.0],   wallCash: [1.6, 2.8],   wallMult: [0.35, 0.6] },
+    common:   { cashCap: 0.6,  multCap: 0.15 },
+    uncommon: { cashCap: 1.1,  multCap: 0.28 },
+    rare:     { cashCap: 2.0,  multCap: 0.5 },
+    jackpot:  { cashCap: 4.5,  multCap: 1.1 },
+  },
+  // deterministic settlement: every hit/wall value is sized from the gap
+  // between the live total and the target trajectory. The payout ALWAYS
+  // settles to the drawn target — player skill changes the show, not the
+  // result, so RTP is exactly the EV of `targets`.
+  settle: {
+    lookahead: 3,           // seconds ahead on the trajectory values aim for
+    hitShare: [0.4, 0.75],  // fraction of the (positive) gap a hit closes
+    wallShare: [0.5, 0.85], // fraction of the (negative) gap a breach closes
+    token: 0.02,            // value floor (fraction of bet) when no gap to close
+    multFloor: 0.15,        // mult never drops below this while target > 0
   },
   spawnScale: 0.55,         // spawn interval multiplier during a round (faster waves)
   control: {
-    interval: 0.5,          // controller cadence (s)
-    deadband: 0.15,         // no steering while |total − desired| < deadband × scale
-    botAccuracyHigh: 0.94,
-    botAccuracyLow: 0.12,
-    botAccuracyNeutral: 0.6,
-    botIntervalFast: 1.0,   // seconds between bot shots when boosting
-    botIntervalSlow: 2.8,
+    interval: 0.4,          // controller cadence (s)
+    deadband: 0.08,         // no steering while |total − desired| < deadband × scale
+    botAccuracyHigh: 0.96,
+    botAccuracyLow: 0.0,    // "miss all their shots"
+    botAccuracyNeutral: 0.55,
+    botIntervalFast: 0.85,  // seconds between bot shots when boosting
+    botIntervalSlow: 3.2,
     botIntervalNeutral: 1.8,
-    inflowBoost: 0.5,       // extra spawn-interval scale when suppressing (lower = more)
-    speedBoost: 1.55,       // enemy speed multiplier when suppressing
+    inflowBoost: 0.32,      // spawn-interval scale when suppressing (lower = more)
+    speedBoost: 1.8,        // enemy speed multiplier when suppressing
   },
   colors: { cash: 0xffc23d, mult: 0xb45cff },
 };
