@@ -72,14 +72,16 @@ export const ENEMIES = {
 // ============================================================================
 export const ROUND = {
   duration: 30,
+  // RTP = Σ(x·w) / Σw = 95.9 / 99.8 ≈ 0.961 — the game's exact house edge,
+  // since every round pays out precisely its drawn target.
   targets: [
-    { x: 0, w: 28 },
+    { x: 0, w: 26 },
     { x: 0.2, w: 20 },
     { x: 0.5, w: 16 },
     { x: 1, w: 14 },
-    { x: 1.5, w: 9 },
-    { x: 2.5, w: 7 },
-    { x: 4, w: 4 },
+    { x: 1.5, w: 10 },
+    { x: 2.5, w: 7.4 },
+    { x: 4, w: 4.4 },
     { x: 8, w: 1.6 },
     { x: 15, w: 0.4 },
   ],

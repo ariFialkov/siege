@@ -270,8 +270,13 @@ class Game {
   }
 
   toMenu() {
+    // No leaving mid-round: the live display correlates with the drawn
+    // target, so a refundable abort would let players dodge bad draws.
+    if (this.round) {
+      this.ui.toast('Hold the wall — the round has to finish');
+      return;
+    }
     sfx.click();
-    if (this.round) this.abortRound();
     this.state = 'menu';
     this.slingshot.enabled = false;
     this.slingshot.cancel();
