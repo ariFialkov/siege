@@ -91,5 +91,5 @@ All gameplay numbers live in **`js/config.js`**:
 - [Three.js](https://threejs.org) loaded via import map — no bundler.
   Procedural low-poly models and WebAudio sound effects, custom lightweight
   ballistics/collision, pointer-events input unified across touch and mouse.
-- PWA: `manifest.webmanifest` (icons embedded as data URIs) + cache-first
+- PWA: `manifest.json` (icons embedded as data URIs) + cache-first
   `sw.js`. `npm run icons` regenerates the icon PNGs from scratch.

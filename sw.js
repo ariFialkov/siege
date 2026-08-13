@@ -1,11 +1,11 @@
 // Siege service worker — cache-first app shell for offline PWA play.
-const CACHE = 'siege-v7';
+const CACHE = 'siege-v8';
 // Precache the app shell. The three.js module (vendored lib/ copy or CDN,
 // whichever index.html picked) is cached at runtime on first fetch.
 const ASSETS = [
   '.',
   'index.html',
-  'manifest.webmanifest',
+  'manifest.json',
   'js/main.js',
   'js/config.js',
   'js/maps.js',
